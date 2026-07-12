@@ -3,6 +3,7 @@ import type { Route } from './routes';
 import { unlockAudio } from './lib/audioUnlock';
 import { HomeScreen } from './screens/HomeScreen';
 import { CreateFlow } from './screens/create/CreateFlow';
+import { PlayerScreen } from './screens/PlayerScreen';
 
 export function App() {
   const [route, setRoute] = useState<Route>({ name: 'home' });
@@ -28,7 +29,7 @@ export function App() {
     case 'create':
       return <CreateFlow navigate={navigate} />;
     case 'player':
-      return <PlaceholderScreen label="よむ(Phase 3で実装)" navigate={navigate} />;
+      return <PlayerScreen bookId={route.bookId} navigate={navigate} />;
     case 'parent':
       return <PlaceholderScreen label="おやモード(Phase 4で実装)" navigate={navigate} />;
   }

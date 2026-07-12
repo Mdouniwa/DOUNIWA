@@ -1,0 +1,101 @@
+.player-screen {
+  position: fixed;
+  inset: 0;
+  background: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.player-loading {
+  color: #fff;
+  font-size: 24px;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.player-image-area {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.player-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+/* 巨大ページ送りボタン(最小88x88px、画面端固定) */
+.player-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 96px;
+  height: 140px;
+  min-width: 88px;
+  min-height: 88px;
+  font-size: 44px;
+  color: #fff;
+  background: rgba(255, 179, 0, 0.85);
+  box-shadow: var(--shadow-card);
+  z-index: 2;
+}
+
+.player-nav--left {
+  left: 0;
+  padding-left: var(--safe-left);
+  border-radius: 0 28px 28px 0;
+}
+
+.player-nav--right {
+  right: 0;
+  padding-right: var(--safe-right);
+  border-radius: 28px 0 0 28px;
+}
+
+.player-nav:disabled {
+  opacity: 0.25;
+  transform: translateY(-50%);
+}
+
+/* ホーム戻る(半透明・小さめ・右上) */
+.player-close {
+  position: absolute;
+  top: calc(var(--safe-top) + 12px);
+  right: calc(var(--safe-right) + 12px);
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+  font-size: 22px;
+  z-index: 3;
+}
+
+.player-dots {
+  position: absolute;
+  bottom: calc(var(--safe-bottom) + 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 2;
+}
+
+.player-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.player-dot--current {
+  background: #ffb300;
+  transform: scale(1.3);
+}
