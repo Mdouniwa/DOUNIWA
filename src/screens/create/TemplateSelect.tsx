@@ -1,5 +1,6 @@
 import type { Theme } from '../../types';
 import { THEME_EMOJI, THEME_LABELS } from '../../types';
+import { playSound } from '../../lib/soundEffects';
 
 const THEMES: Theme[] = ['odekake', 'birthday', 'animal', 'vehicle'];
 
@@ -18,7 +19,10 @@ export function TemplateSelect({ theme, onSelect }: TemplateSelectProps) {
           <button
             key={t}
             className={`template-card pressable ${t === theme ? 'template-card--selected' : ''}`}
-            onClick={() => onSelect(t)}
+            onClick={() => {
+              playSound('tap');
+              onSelect(t);
+            }}
           >
             <span className="template-emoji" aria-hidden>
               {THEME_EMOJI[t]}

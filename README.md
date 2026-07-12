@@ -1,32 +1,100 @@
-# React + TypeScript + Vite
+# しゃべるえほん(しゃべる絵本メーカー)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+家族専用の「しゃべる絵本メーカー」PWA。写真と声で絵本をつくり、iPad(Safari・ホーム画面追加)で読む家庭内PoCです。
 
-Currently, two official plugins are available:
+- **5歳(つくる側)**: 写真選択・録音・ページ順入れ替え・テンプレ選択
+- **2歳(よむ側)**: 大きな左右ボタンでページ送り、画像タップで効果音
+- **親**: ホーム右上隅を**3秒長押し**で親モード(削除・並び替え・表紙変更・よみあげ文編集)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 技術構成
 
-## React Compiler
+- Vite + React + TypeScript
+- IndexedDB(`idb`)— 画像・音声・メタデータをすべて端末内保存(外部通信なし)
+- PWA(`vite-plugin-pwa`)— オフライン完全動作
+- 録音: MediaRecorder API(iOSは `audio/mp4`、他は `webm` にフォールバック)
+- 読み上げ: Web Speech API `speechSynthesis`(ja-JP)
+- 効果音: WebAudio(OfflineAudioContext)によるコード合成。外部音源ファイルなし
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 開発
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev     # 開発サーバー
+npm run build   # 型チェック + 本番ビルド(dist/)
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+アプリアイコンを変更する場合は `scripts/icon.svg` を編集して:
+
+```bash
+node scripts/generate-icons.mjs
+```
+
+## Vercelへのデプロイ手順
+
+静的ホスティングのみ使用します(サーバーサイド処理・外部API・DBなし)。
+
+1. このリポジトリをGitHubにpushしておく
+2. [vercel.com](https://vercel.com) にログイン → **Add New… → Project**
+3. このリポジトリを **Import**
+4. Framework Preset に **Vite** が自動検出されることを確認
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
+5. **Deploy** を押す(環境変数の設定は不要)
+6. 発行された `https://〜.vercel.app` のURLをiPadで開く
+
+以後は対象ブランチにpushするたびに自動で再デプロイされます。
+
+> PWA(Service Worker)はHTTPS必須です。Vercelは標準でHTTPSなのでそのままで動作します。
+
+## iPadのホーム画面に追加する手順
+
+1. iPadの **Safari** でデプロイしたURLを開く
+2. 共有ボタン(□に↑)をタップ
+3. **「ホーム画面に追加」** をタップ
+4. 名前(しゃべるえほん)を確認して **追加**
+5. 以後は**ホーム画面のアイコンから起動**する(フルスクリーンのスタンドアロン表示になります)
+
+> **重要**: 最初の起動時に一度オンラインで開いてください。以降はオフラインでも完全動作します。
+> ストレージ永続化(`navigator.storage.persist()`)を起動時に要求しますが、iOSでは「ホーム画面追加済み」だと許可されやすくなります。長期間(7日以上)まったく開かないとSafariの仕様でデータが消える可能性があるため、ときどき開いてください。
+
+## 実機確認チェックリスト(iPad / iPhone)
+
+自動E2Eテストは行わない方針のため、以下を実機で確認してください。
+
+### 初回セットアップ
+- [ ] Safariで開き、ホーム画面に追加できる
+- [ ] ホーム画面から起動するとフルスクリーン(アドレスバーなし)で開く
+- [ ] 機内モードにして起動してもアプリが開く(オフライン動作)
+
+### 作成フロー(5歳と一緒に)
+- [ ] テンプレ4種から選べる
+- [ ] 写真ライブラリから複数枚選べて、サムネイルが表示される(5〜10枚)
+- [ ] ←→ボタンでページ順を入れ替えられる
+- [ ] 🎤ボタンで録音開始→もう一度押して停止できる(**初回はマイク許可ダイアログが出る**)
+- [ ] 「きいてみる」で録音した声が再生される
+- [ ] 効果音チップ(はくしゅ/どうぶつ/くるま/キラキラ/ラッパ)をタップすると音が鳴って選択される
+- [ ] タイトル入力でキーボードのマイク(ディクテーション)が使える
+- [ ] 「かんせい!」で保存され、お祝い画面→ホームに新しい絵本が出る
+
+### 再生(2歳と一緒に)
+- [ ] 絵本カードをタップすると全画面で開く
+- [ ] ページを開くと録音した声が自動再生される
+- [ ] 録音していないページは、よみあげ文があればTTS(日本語)で読まれる
+- [ ] 画像をタップすると効果音が鳴る(**声と同時に鳴っても声は止まらない**)
+- [ ] 左右の大きな◀▶でページ送りできる。連打しても暴走しない
+- [ ] 右上の✕でホームに戻り、音が止まる
+- [ ] 消音スイッチ・音量にも注意(iPadの消音時は音が出ません)
+
+### 親モード
+- [ ] ホーム右上隅を3秒長押しすると親モードに入る(子どもが偶然入らないか観察)
+- [ ] タイトル・よみあげ文を編集できる
+- [ ] ページ並び替え・表紙変更が再生画面に反映される
+- [ ] 削除は確認が2回出て、絵本とページがすべて消える
+
+### 容量・安定性
+- [ ] 10枚の絵本を2〜3冊つくってもホームがすぐ開く
+- [ ] アプリを完全に閉じて再起動しても絵本が残っている
+
+## やらないこと(スコープ外)
+
+外部共有・アカウント・課金・AI生成・動画編集・クラウド同期・外部API・アナリティクス・複雑ジェスチャ(ピンチ/スワイプ/ドラッグ)・アプリ内STT

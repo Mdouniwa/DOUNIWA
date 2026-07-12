@@ -83,7 +83,7 @@ export function CoverSetup({ draft, onChange, onSaved }: CoverSetupProps) {
       </div>
 
       <div className="create-step-footer">
-        <BigButton color="green" onClick={() => void save()} disabled={saving}>
+        <BigButton color="green" silent onClick={() => void save()} disabled={saving}>
           {saving ? 'ほぞんちゅう…' : 'かんせい!'}
         </BigButton>
       </div>

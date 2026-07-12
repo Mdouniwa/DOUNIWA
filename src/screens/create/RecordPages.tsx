@@ -140,15 +140,16 @@ export function RecordPages({ pages, onChange, onNext }: RecordPagesProps) {
       </div>
 
       <div className="create-step-footer record-footer">
-        <BigButton color="ghost" onClick={() => void goPage(-1)} disabled={index === 0}>
+        {/* 録音中の可能性があるためタップ音は鳴らさない(マイクに乗るのを防ぐ) */}
+        <BigButton color="ghost" silent onClick={() => void goPage(-1)} disabled={index === 0}>
           ← まえ
         </BigButton>
         {isLast ? (
-          <BigButton color="green" onClick={onNext}>
+          <BigButton color="green" silent onClick={onNext}>
             つぎへ →
           </BigButton>
         ) : (
-          <BigButton color="accent" onClick={() => void goPage(1)}>
+          <BigButton color="accent" silent onClick={() => void goPage(1)}>
             つぎの ページ →
           </BigButton>
         )}

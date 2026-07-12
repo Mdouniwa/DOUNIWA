@@ -4,6 +4,7 @@ import type { Book } from '../types';
 import { getAllBooks, touchBook } from '../lib/db';
 import { BookCard } from '../components/BookCard';
 import { useLongPress } from '../hooks/useLongPress';
+import { playSound } from '../lib/soundEffects';
 import './HomeScreen.css';
 
 interface HomeScreenProps {
@@ -22,8 +23,14 @@ export function HomeScreen({ navigate }: HomeScreenProps) {
   }, []);
 
   const openBook = (book: Book) => {
+    playSound('tap');
     void touchBook(book.id);
     navigate({ name: 'player', bookId: book.id });
+  };
+
+  const openCreate = () => {
+    playSound('tap');
+    navigate({ name: 'create' });
   };
 
   return (
@@ -36,10 +43,7 @@ export function HomeScreen({ navigate }: HomeScreenProps) {
       </header>
 
       <div className="home-grid">
-        <button
-          className="home-create-card pressable"
-          onClick={() => navigate({ name: 'create' })}
-        >
+        <button className="home-create-card pressable" onClick={openCreate}>
           <span className="home-create-icon" aria-hidden>
             ＋
           </span>
