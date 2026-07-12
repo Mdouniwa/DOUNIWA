@@ -1,0 +1,36 @@
+.big-button {
+  min-height: 72px;
+  min-width: 88px;
+  padding: 16px 32px;
+  border-radius: var(--radius-lg);
+  font-size: 24px;
+  font-weight: bold;
+  color: #fff;
+  box-shadow: var(--shadow-card);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.big-button:disabled {
+  opacity: 0.4;
+  transform: none;
+}
+
+.big-button--primary {
+  background: var(--color-primary);
+}
+.big-button--accent {
+  background: var(--color-accent);
+}
+.big-button--green {
+  background: var(--color-green);
+}
+.big-button--red {
+  background: var(--color-red);
+}
+.big-button--ghost {
+  background: var(--color-card);
+  color: var(--color-text);
+}
