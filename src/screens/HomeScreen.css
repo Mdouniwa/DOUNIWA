@@ -6,6 +6,16 @@
   display: flex;
   justify-content: center;
   padding: 8px 0;
+  position: relative;
+}
+
+/* 親モード入口: 右上隅の透明な長押し領域 */
+.home-parent-corner {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 88px;
+  height: 88px;
 }
 
 .home-title {

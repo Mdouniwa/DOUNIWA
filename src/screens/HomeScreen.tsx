@@ -3,6 +3,7 @@ import type { Navigate } from '../routes';
 import type { Book } from '../types';
 import { getAllBooks, touchBook } from '../lib/db';
 import { BookCard } from '../components/BookCard';
+import { useLongPress } from '../hooks/useLongPress';
 import './HomeScreen.css';
 
 interface HomeScreenProps {
@@ -12,6 +13,9 @@ interface HomeScreenProps {
 /** ホーム: 絵本カード2列 + 「つくる」導線。直近閲覧が先頭 */
 export function HomeScreen({ navigate }: HomeScreenProps) {
   const [books, setBooks] = useState<Book[]>([]);
+
+  // 親モード入口: 画面隅を3秒長押し(子どもが偶然開かないように)
+  const parentEntry = useLongPress(() => navigate({ name: 'parent' }), 3000);
 
   useEffect(() => {
     void getAllBooks().then(setBooks);
@@ -28,6 +32,7 @@ export function HomeScreen({ navigate }: HomeScreenProps) {
         <h1 className="home-title">
           <span aria-hidden>📖</span> しゃべるえほん
         </h1>
+        <div className="home-parent-corner" {...parentEntry} aria-label="おやモード(3秒長押し)" />
       </header>
 
       <div className="home-grid">
