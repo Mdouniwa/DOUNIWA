@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Route } from './routes';
 import { unlockAudio } from './lib/audioUnlock';
 import { HomeScreen } from './screens/HomeScreen';
+import { CreateFlow } from './screens/create/CreateFlow';
 
 export function App() {
   const [route, setRoute] = useState<Route>({ name: 'home' });
@@ -25,7 +26,7 @@ export function App() {
     case 'home':
       return <HomeScreen navigate={navigate} />;
     case 'create':
-      return <PlaceholderScreen label="つくる(Phase 2で実装)" navigate={navigate} />;
+      return <CreateFlow navigate={navigate} />;
     case 'player':
       return <PlaceholderScreen label="よむ(Phase 3で実装)" navigate={navigate} />;
     case 'parent':

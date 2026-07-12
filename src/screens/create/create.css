@@ -1,0 +1,383 @@
+.create-screen {
+  gap: 12px;
+}
+
+.create-header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 4px 0 8px;
+}
+
+.create-back {
+  justify-self: start;
+  font-size: 20px;
+  font-weight: bold;
+  color: var(--color-text-light);
+  padding: 12px;
+}
+
+.create-header-spacer {
+  justify-self: end;
+}
+
+.create-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.create-step-title {
+  font-size: 28px;
+  text-align: center;
+  color: var(--color-primary-dark);
+}
+
+.create-step-hint {
+  text-align: center;
+  font-size: 18px;
+  color: var(--color-text-light);
+}
+
+.create-step-footer {
+  margin-top: auto;
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding-top: 16px;
+}
+
+/* --- Step1 テンプレ選択 --- */
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  flex: 1;
+  align-content: center;
+}
+
+.template-card {
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  border: 4px solid transparent;
+  padding: 28px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.template-card--selected {
+  border-color: var(--color-primary);
+}
+
+.template-emoji {
+  font-size: 72px;
+  line-height: 1;
+}
+
+.template-label {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+/* --- Step2 写真選択 --- */
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 14px;
+}
+
+.photo-cell {
+  position: relative;
+}
+
+.page-thumb {
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: #fff3d6;
+  box-shadow: var(--shadow-card);
+}
+
+.page-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-remove {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--color-red);
+  color: #fff;
+  font-size: 20px;
+  font-weight: bold;
+  box-shadow: var(--shadow-card);
+}
+
+.photo-add {
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-md);
+  border: 4px dashed var(--color-primary);
+  background: rgba(255, 179, 0, 0.08);
+  font-size: 48px;
+  color: var(--color-primary-dark);
+}
+
+/* --- Step3 並び替え --- */
+.order-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
+}
+
+.order-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.order-number {
+  position: absolute;
+  top: -10px;
+  left: -6px;
+  z-index: 1;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 20px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-card);
+}
+
+.order-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.order-move {
+  min-width: 64px;
+  min-height: 52px;
+  border-radius: var(--radius-md);
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+  font-size: 26px;
+  font-weight: bold;
+  color: var(--color-primary-dark);
+}
+
+.order-move:disabled {
+  opacity: 0.3;
+}
+
+/* --- Step4 録音+効果音 --- */
+.record-photo {
+  align-self: center;
+  width: min(100%, 420px);
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  background: #fff3d6;
+}
+
+.record-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.record-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.record-button {
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  background: var(--color-red);
+  color: #fff;
+  font-size: 44px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.record-button--recording {
+  animation: record-pulse 1s infinite;
+}
+
+@keyframes record-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 83, 80, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 18px rgba(239, 83, 80, 0);
+  }
+}
+
+.record-status {
+  font-size: 17px;
+  color: var(--color-text-light);
+  text-align: center;
+}
+
+.record-error {
+  display: block;
+  color: var(--color-red);
+  font-weight: bold;
+}
+
+.record-preview {
+  font-size: 20px;
+  font-weight: bold;
+  color: var(--color-accent);
+  padding: 10px 20px;
+  border-radius: var(--radius-md);
+  background: rgba(66, 165, 245, 0.12);
+}
+
+.effect-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.effect-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.effect-chip {
+  min-height: 56px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+  font-size: 18px;
+  font-weight: bold;
+  border: 3px solid transparent;
+}
+
+.effect-chip--selected {
+  border-color: var(--color-primary);
+  background: rgba(255, 179, 0, 0.15);
+}
+
+.record-footer {
+  justify-content: space-between;
+}
+
+/* --- Step5 表紙 --- */
+.cover-title-label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--color-text-light);
+}
+
+.cover-title-input {
+  font-size: 24px;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  border: 3px solid rgba(78, 52, 46, 0.15);
+  background: var(--color-card);
+}
+
+.cover-title-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.cover-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 14px;
+}
+
+.cover-cell {
+  border-radius: var(--radius-md);
+  border: 4px solid transparent;
+  padding: 0;
+  overflow: hidden;
+}
+
+.cover-cell--selected {
+  border-color: var(--color-green);
+}
+
+/* --- Step6 完了 --- */
+.done-step {
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  position: relative;
+  overflow: hidden;
+}
+
+.done-emoji {
+  font-size: 110px;
+  animation: done-bounce 0.9s ease infinite alternate;
+}
+
+@keyframes done-bounce {
+  from {
+    transform: translateY(0) scale(1);
+  }
+  to {
+    transform: translateY(-18px) scale(1.08);
+  }
+}
+
+.done-title {
+  font-size: 32px;
+  color: var(--color-primary-dark);
+}
+
+.confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -20px;
+  width: 12px;
+  height: 18px;
+  border-radius: 3px;
+  opacity: 0.9;
+  animation: confetti-fall linear infinite;
+}
+
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-5vh) rotate(0deg);
+  }
+  100% {
+    transform: translateY(105vh) rotate(660deg);
+  }
+}
