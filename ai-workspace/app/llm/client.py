@@ -20,6 +20,11 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_S = 120.0
 
+# mlx_lm.server は max_tokens 未指定だと 512 で打ち切る。
+# reasoning 系モデル（Qwen3.6 等）は思考だけで 512 を超え、
+# content が欠落して stub フォールバックしてしまうため、明示的に広げる。
+DEFAULT_MAX_TOKENS = 4096
+
 
 @dataclass(frozen=True)
 class ChatMessage:
@@ -64,6 +69,7 @@ class LLMClient:
             "model": model.served_model_name,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "temperature": temperature,
+            "max_tokens": DEFAULT_MAX_TOKENS,
         }
 
         url = base_url.rstrip("/") + "/chat/completions"
