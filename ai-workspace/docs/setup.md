@@ -39,7 +39,56 @@ ai-workspace models
 
 ## 4. ローカルLLM（MLX）の実接続
 
-### mlx_lm.server を使う場合
+### 4-a. M5 Max 常駐 FastAPI プロキシ（11437）を使う場合【推奨・実機】
+
+M5 Max 上で `~/local_mlx_server/` のプロキシが稼働している場合はそれをそのまま使う。
+**プロキシ本体（plist / start_servers.sh 含む）には変更・再起動を加えないこと。**
+
+手順（すべて read-only）:
+
+```bash
+# 1. LISTEN 確認（11435-11438）
+lsof -iTCP -sTCP:LISTEN -n -P | grep -E '1143[5-8]'
+
+# 2. 実際に通る model 名をライブで確認（Obsidianノート等の記録は参考値。ライブを正とする）
+curl -s http://localhost:11437/v1/models | python3 -m json.tool
+
+# 3. 生 curl で疎通確認（choices[0].message.content が返ること）
+curl -s http://localhost:11437/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"<手順2の実名>","messages":[{"role":"user","content":"1+1は？"}]}'
+```
+
+プロキシは model 名の**部分一致**でルーティングする（proxy_server.py を読んで確認）:
+
+| 名前の条件 | 実体 | ai-workspace 側の割り当て |
+|---|---|---|
+| "26b" を含む | Gemma 26B（高速・日本語◎） | `GEMMA_SERVED_NAME`（workhorse・既定） |
+| "gemma" かつ "31b" を含む | Gemma 31B（高品質・低速） | `LLAMA70B_SERVED_NAME`（quality 枠） |
+| "qwen" を含む | Qwen 35B（Tool Calling向き） | `QWEN_SERVED_NAME` |
+
+.env の設定例（**served name は必ず手順2のライブ出力に置き換える**）:
+
+```bash
+LOCAL_LLM_BASE_URL=http://localhost:11437/v1
+LOCAL_LLM_API_KEY=dummy          # プロキシがキー不要ならダミーで可
+DEFAULT_MODEL=gemma-31b          # 内部名。served は 26B を指すので既定が高速系になる
+GEMMA_SERVED_NAME=<26bを含むライブの実名>
+QWEN_SERVED_NAME=<qwenを含むライブの実名>
+LLAMA70B_SERVED_NAME=<gemmaかつ31bを含むライブの実名>
+```
+
+注意:
+
+- 内部名 `llama-70b` は「品質優先枠（--quality）」の抽象名。実体は Gemma 31B を
+  割り当ててよい（内部名と served name の分離はこのための設計）。
+- Gemma 31B は初回コールに 10〜30 秒のコールドスタートがある。クライアントの
+  タイムアウトは既定 120 秒（`app/llm/client.py` の `DEFAULT_TIMEOUT_S`）なので
+  そのままで足りる。
+- localhost で繋がらない場合のみ Tailscale IP（例: `http://100.105.91.109:11437/v1`）
+  に切り替える。IP はコードに書かず .env のみ。
+
+### 4-b. mlx_lm.server を単体で使う場合
 
 ```bash
 pip install mlx-lm
@@ -47,12 +96,12 @@ pip install mlx-lm
 mlx_lm.server --model mlx-community/Qwen3-32B-4bit --port 8080
 ```
 
-### LM Studio を使う場合
+### 4-c. LM Studio を使う場合
 
 1. LM Studio でモデルをロード
 2. Developer タブから Local Server を起動（既定ポート 1234）
 
-### .env の設定
+### 4-b / 4-c の .env 設定
 
 ```bash
 LOCAL_LLM_BASE_URL=http://localhost:8080/v1   # LM Studio なら http://localhost:1234/v1
