@@ -33,7 +33,8 @@ class ObsidianAdapter(ToolAdapter):
 
     def _save_note(self, request: ToolRequest) -> ToolResult:
         vault = os.environ.get("OBSIDIAN_VAULT_PATH")
-        title = request.params.get("title") or f"ai-workspace {datetime.now():%Y-%m-%d %H%M}"
+        now = datetime.now()
+        title = request.params.get("title") or f"ai-workspace {now:%Y-%m-%d %H%M}"
         body = request.params.get("body") or request.task_text
 
         if not vault or not Path(vault).is_dir():
@@ -49,10 +50,23 @@ class ObsidianAdapter(ToolAdapter):
 
         folder = Path(vault) / os.environ.get("OBSIDIAN_NOTE_FOLDER", "ai-workspace")
         folder.mkdir(parents=True, exist_ok=True)
-        safe_title = "".join(c for c in title if c not in '\\/:*?"<>|').strip()
-        path = folder / f"{safe_title}.md"
+        topic = "".join(c for c in title if c not in '\\/:*?"<>|').strip() or "note"
+        path = folder / f"{now:%Y-%m-%d}_claude_{topic}.md"
+        # 既存ノートは変更しない（新規作成のみ）。衝突時は連番を付ける。
+        seq = 1
+        while path.exists():
+            seq += 1
+            path = folder / f"{now:%Y-%m-%d}_claude_{topic}_{seq}.md"
+        note = (
+            "---\n"
+            f"created: {now:%Y-%m-%dT%H:%M:%S}\n"
+            "source: ai-workspace\n"
+            f'title: "{title}"\n'
+            "---\n\n"
+            f"# {title}\n\n{body}\n"
+        )
         try:
-            path.write_text(f"# {title}\n\n{body}\n", encoding="utf-8")
+            path.write_text(note, encoding="utf-8")
             return ToolResult(
                 ok=True,
                 output=f"Obsidian ノートを保存しました: {path}",
