@@ -45,7 +45,7 @@ class GitHubAdapter(ToolAdapter):
                 stubbed=True,
                 output=(
                     f"[stub:github] {missing} が未設定のため stub 応答です。"
-                    " READMEを取得したものとして処理を継続します。"
+                    " READMEは実際には取得していません。"
                 ),
             )
 

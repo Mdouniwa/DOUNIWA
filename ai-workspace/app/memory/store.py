@@ -38,6 +38,7 @@ class TaskRecord:
     tool_output: str
     llm_output: str
     stubbed: bool
+    tool_ok: bool | None = None  # ツール未使用なら None
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     timestamp: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()

@@ -14,12 +14,23 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 
 from app.tools.base import ToolAdapter, ToolRequest, ToolResult
 
 logger = logging.getLogger(__name__)
+
+# 「『タイトル』というメモを保存して」形式からタイトルを拾う
+_QUOTED_TITLE = re.compile(r"『([^』]+)』|「([^」]+)」")
+
+
+def _title_from_task(task_text: str) -> str | None:
+    m = _QUOTED_TITLE.search(task_text)
+    if not m:
+        return None
+    return (m.group(1) or m.group(2) or "").strip() or None
 
 
 class ObsidianAdapter(ToolAdapter):
@@ -34,7 +45,11 @@ class ObsidianAdapter(ToolAdapter):
     def _save_note(self, request: ToolRequest) -> ToolResult:
         vault = os.environ.get("OBSIDIAN_VAULT_PATH")
         now = datetime.now()
-        title = request.params.get("title") or f"ai-workspace {now:%Y-%m-%d %H%M}"
+        title = (
+            request.params.get("title")
+            or _title_from_task(request.task_text)
+            or f"ai-workspace {now:%Y-%m-%d %H%M}"
+        )
         body = request.params.get("body") or request.task_text
 
         if not vault or not Path(vault).is_dir():

@@ -40,6 +40,25 @@ def test_save_note_writes_file_with_frontmatter(tmp_path, monkeypatch):
     assert "本文です" in text
 
 
+def test_save_note_title_extracted_from_quoted_task_text(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
+    monkeypatch.setenv("OBSIDIAN_NOTE_FOLDER", "00_Inbox_personal")
+
+    request = ToolRequest(
+        action="save_note",
+        params={},
+        task_text="Obsidianに『2回目の実装テスト:バグ修正確認』というメモを保存して",
+    )
+    result = ObsidianAdapter().execute(request)
+
+    assert result.ok is True
+    files = list((tmp_path / "00_Inbox_personal").glob("*.md"))
+    assert len(files) == 1
+    # 半角コロンはファイル名では除去され、frontmatter には残る
+    assert "2回目の実装テストバグ修正確認" in files[0].name
+    assert 'title: "2回目の実装テスト:バグ修正確認"' in files[0].read_text(encoding="utf-8")
+
+
 def test_save_note_does_not_overwrite_existing(tmp_path, monkeypatch):
     monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path))
     monkeypatch.setenv("OBSIDIAN_NOTE_FOLDER", "00_Inbox_personal")

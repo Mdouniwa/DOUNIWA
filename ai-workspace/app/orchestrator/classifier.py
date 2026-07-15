@@ -7,6 +7,7 @@ classify_task() のシグネチャ（str -> TaskKind + ツールヒント）は�
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 
@@ -26,7 +27,8 @@ class Classification:
     tool_action: str | None    # ツールに渡す action
 
 
-# キーワード -> 分類。上から順に評価し、最初にマッチしたものを採用する。
+# キーワード -> 分類。マッチしたキーワード数が最多のルールを採用し、
+# 同数の場合は上のルールを優先する。
 _RULES: list[tuple[tuple[str, ...], Classification]] = [
     (
         ("github", "リポジトリ", "readme", "プルリク", "pull request", "issue"),
@@ -48,11 +50,26 @@ _RULES: list[tuple[tuple[str, ...], Classification]] = [
 
 _FALLBACK = Classification(TaskKind.GENERAL, None, None)
 
+# 引用符で囲まれた部分（メモのタイトル等の「データ」）。
+# 例:「Obsidianに『GitHub確認完了』というメモを保存して」の『…』内は
+# タスクの意図ではないため、キーワード判定の対象から外す。
+_QUOTED_SPAN = re.compile(
+    r"『[^』]*』|「[^」]*」|【[^】]*】|“[^”]*”|\"[^\"]*\"|'[^']*'"
+)
+
+
+def _intent_text(task_text: str) -> str:
+    """引用部分を除いた、意図判定用のテキストを返す。"""
+    return _QUOTED_SPAN.sub(" ", task_text)
+
 
 def classify_task(task_text: str) -> Classification:
     """自然言語タスクを分類し、使用ツールのヒントを返す。"""
-    lowered = task_text.lower()
+    lowered = _intent_text(task_text).lower()
+    best = _FALLBACK
+    best_score = 0
     for keywords, classification in _RULES:
-        if any(kw in lowered for kw in keywords):
-            return classification
-    return _FALLBACK
+        score = sum(1 for kw in keywords if kw in lowered)
+        if score > best_score:
+            best, best_score = classification, score
+    return best

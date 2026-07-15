@@ -9,6 +9,7 @@ import json
 
 import pytest
 
+from app.llm.client import ChatMessage, ChatResult
 from app.memory.store import MemoryStore
 from app.orchestrator.classifier import TaskKind, classify_task
 from app.orchestrator.core import Orchestrator
@@ -29,6 +30,57 @@ def test_classify_task_routes_to_expected_tools():
     assert classify_task("n8nのWebhookを叩いて").kind == TaskKind.AUTOMATION
     assert classify_task("ブラウザで開いて").kind == TaskKind.BROWSER
     assert classify_task("量子力学を説明して").kind == TaskKind.GENERAL
+
+
+def test_classify_ignores_quoted_payload():
+    """『…』内はメモのタイトル（データ）であり、タスクの意図ではない。
+
+    回帰テスト: タイトルに GitHub・n8n を含むメモ保存指示が
+    code/github に誤分類され、READMEを取得したうえで
+    「保存しました」と虚偽報告された問題（2026-07-15）。
+    """
+    c = classify_task("Obsidianに『実装テスト:GitHub・n8n配線確認完了』というメモを保存して")
+    assert c.kind == TaskKind.WRITE_NOTE
+    assert c.tool_name == "obsidian"
+
+
+def test_classify_prefers_rule_with_most_keyword_hits():
+    c = classify_task("GitHubの調査結果をObsidianにメモとして保存して")
+    assert c.kind == TaskKind.WRITE_NOTE
+
+
+class _RecordingClient:
+    """LLMに渡された messages を記録する偽クライアント。"""
+
+    def __init__(self) -> None:
+        self.messages: list[ChatMessage] = []
+
+    def chat(self, model, messages, temperature=0.3) -> ChatResult:
+        self.messages = messages
+        return ChatResult(model_name=model.name, content="ok", stubbed=True)
+
+
+def test_tool_status_is_passed_to_llm_prompt(tmp_path, monkeypatch):
+    """ツールの成否・stub状態が最終応答プロンプトに明示されること。
+
+    回帰テスト: 実行結果の成否がLLMに渡らず、未実行の操作を
+    「完了した」と報告してしまう問題への対策の検証。
+    """
+    for var in ("LOCAL_LLM_BASE_URL", "GITHUB_TOKEN", "OBSIDIAN_VAULT_PATH",
+                "N8N_WEBHOOK_BASE_URL"):
+        monkeypatch.delenv(var, raising=False)
+    client = _RecordingClient()
+    orch = Orchestrator(client=client, store=MemoryStore(base_dir=tmp_path))
+
+    outcome = orch.run("Obsidianにメモを保存して")  # vault未設定 → stub
+
+    assert outcome.tool_ok is True
+    assert outcome.stubbed is True
+    system = client.messages[0].content
+    assert "実行されていない操作" in system
+    prompt = client.messages[-1].content
+    assert "実行ステータス" in prompt
+    assert "実際には実行されていない" in prompt
 
 
 def test_e2e_github_task_stub(orchestrator):

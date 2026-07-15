@@ -26,6 +26,10 @@ _SYSTEM_PROMPT = (
     "あなたは個人用AIワークスペースのアシスタントです。"
     "ユーザーのタスクと、ツール実行結果（あれば）を踏まえて、"
     "簡潔かつ実用的な日本語で応答してください。"
+    "報告できるのは、ツール実行結果に事実として書かれている内容だけです。"
+    "実行されていない操作（保存・送信・取得など）を完了したと"
+    "述べてはいけません。実行ステータスが「失敗」または「stub（未実行）」の"
+    "場合は、タスクが完了していないことを正直に伝えてください。"
 )
 
 
@@ -38,6 +42,7 @@ class TaskOutcome:
     model_name: str
     route_reason: str
     tool_name: str | None
+    tool_ok: bool | None       # ツールを使っていなければ None
     tool_output: str | None
     llm_output: str
     stubbed: bool
@@ -90,10 +95,21 @@ class Orchestrator:
         # 4. LLMで最終応答を生成
         messages = [ChatMessage("system", _SYSTEM_PROMPT)]
         if tool_result is not None:
+            # 成否・stub を明示して渡す。これを省くと、LLMが「ツールが呼ばれた」
+            # ことだけを根拠に、実行されていない操作を完了したと報告し得る。
+            if tool_result.stubbed:
+                status = "stub（実接続なし。実際には実行されていない）"
+            elif tool_result.ok:
+                status = "成功"
+            else:
+                status = "失敗"
             messages.append(ChatMessage(
                 "user",
                 f"タスク: {task_text}\n\n"
-                f"ツール {classification.tool_name} の実行結果:\n{tool_result.output}",
+                f"実行したツール: {classification.tool_name}"
+                f"（action: {classification.tool_action}）\n"
+                f"実行ステータス: {status}\n"
+                f"実行結果:\n{tool_result.output}",
             ))
         else:
             messages.append(ChatMessage("user", task_text))
@@ -107,6 +123,7 @@ class Orchestrator:
             route_reason=decision.reason,
             tool_name=classification.tool_name,
             tool_action=classification.tool_action,
+            tool_ok=tool_result.ok if tool_result else None,
             tool_output=tool_result.output if tool_result else "",
             llm_output=chat.content,
             stubbed=chat.stubbed or bool(tool_result and tool_result.stubbed),
@@ -119,6 +136,7 @@ class Orchestrator:
             model_name=decision.model.name,
             route_reason=decision.reason,
             tool_name=classification.tool_name,
+            tool_ok=tool_result.ok if tool_result else None,
             tool_output=tool_result.output if tool_result else None,
             llm_output=chat.content,
             stubbed=record.stubbed,

@@ -47,6 +47,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     print(f"使用モデル : {outcome.model_name}（{outcome.route_reason}）")
     if outcome.tool_name:
         print(f"使用ツール : {outcome.tool_name}")
+        print(f"ツール成否 : {'成功' if outcome.tool_ok else '失敗'}")
         print(f"ツール結果 : {outcome.tool_output}")
     if outcome.stubbed:
         print("注記       : stub 応答を含みます（実接続なし）")
