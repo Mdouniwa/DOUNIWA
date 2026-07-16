@@ -23,6 +23,13 @@ logger = logging.getLogger(__name__)
 class N8nAdapter(ToolAdapter):
     name = "n8n"
     supported_actions = ("trigger_webhook",)
+    action_docs = {
+        "trigger_webhook": (
+            "n8n の Webhook を POST で起動する。"
+            ' params: {"webhook_path": "Webhookのパス", "payload": {任意のJSON}}'
+        ),
+    }
+    write_actions = ("trigger_webhook",)
 
     def execute(self, request: ToolRequest) -> ToolResult:
         if request.action == "trigger_webhook":

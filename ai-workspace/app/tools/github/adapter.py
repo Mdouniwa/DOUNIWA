@@ -28,6 +28,12 @@ _API_BASE = "https://api.github.com"
 class GitHubAdapter(ToolAdapter):
     name = "github"
     supported_actions = ("read_readme",)
+    action_docs = {
+        "read_readme": (
+            "GitHubリポジトリのREADME全文を取得する。"
+            ' params: {"repo": "owner/name"}（省略時は既定リポジトリ）'
+        ),
+    }
 
     def execute(self, request: ToolRequest) -> ToolResult:
         if request.action == "read_readme":

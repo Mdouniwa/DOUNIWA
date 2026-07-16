@@ -61,7 +61,7 @@ class _RecordingClient:
 
 
 def test_tool_status_is_passed_to_llm_prompt(tmp_path, monkeypatch):
-    """ツールの成否・stub状態が最終応答プロンプトに明示されること。
+    """ステップごとの成否・stub状態が最終応答プロンプトに明示されること。
 
     回帰テスト: 実行結果の成否がLLMに渡らず、未実行の操作を
     「完了した」と報告してしまう問題への対策の検証。
@@ -77,10 +77,73 @@ def test_tool_status_is_passed_to_llm_prompt(tmp_path, monkeypatch):
     assert outcome.tool_ok is True
     assert outcome.stubbed is True
     system = client.messages[0].content
-    assert "実行されていない操作" in system
+    assert "完了したと述べてはいけません" in system
     prompt = client.messages[-1].content
-    assert "実行ステータス" in prompt
+    assert "各ステップの実行結果" in prompt
     assert "実際には実行されていない" in prompt
+
+
+def test_e2e_multistep_plan_chains_outputs(tmp_path, monkeypatch):
+    """複数ステップ計画: {{stepN.output}} が後段に差し込まれて実行されること。"""
+    for var in ("LOCAL_LLM_BASE_URL", "GITHUB_TOKEN", "N8N_WEBHOOK_BASE_URL"):
+        monkeypatch.delenv(var, raising=False)
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(vault))
+    monkeypatch.setenv("OBSIDIAN_NOTE_FOLDER", "inbox")
+
+    from app.orchestrator.planner import Plan, PlanStep
+
+    class _FixedPlanner:
+        def plan(self, task_text, planning_model=None):
+            return Plan(
+                steps=(
+                    PlanStep("github", "read_readme", {}),
+                    PlanStep("obsidian", "save_note",
+                             {"title": "連結テスト", "body": "{{step1.output}}"}),
+                ),
+                source="llm",
+            )
+
+    orch = Orchestrator(
+        store=MemoryStore(base_dir=tmp_path / "mem"), planner=_FixedPlanner()
+    )
+    outcome = orch.run("READMEを取ってメモして")
+
+    assert [s.label for s in outcome.steps] == \
+        ["github.read_readme", "obsidian.save_note"]
+    assert outcome.steps[1].skipped is False
+    assert outcome.steps[1].ok is True
+    files = list((vault / "inbox").glob("*.md"))
+    assert len(files) == 1
+    # step1（github stub）の出力が step2 の本文に差し込まれている
+    assert "[stub:github]" in files[0].read_text(encoding="utf-8")
+    assert outcome.tool_ok is True
+    assert outcome.stubbed is True  # github が stub なのでタスク全体も stub 扱い
+
+
+def test_e2e_rejected_plan_reports_honestly(tmp_path, monkeypatch):
+    """安全ガードで拒否された計画は何も実行せず、その旨を明記すること。"""
+    for var in ("LOCAL_LLM_BASE_URL", "GITHUB_TOKEN", "OBSIDIAN_VAULT_PATH",
+                "N8N_WEBHOOK_BASE_URL"):
+        monkeypatch.delenv(var, raising=False)
+
+    from app.orchestrator.planner import PlanRejected
+
+    class _RejectingPlanner:
+        def plan(self, task_text, planning_model=None):
+            raise PlanRejected("テスト用の拒否理由")
+
+    orch = Orchestrator(
+        store=MemoryStore(base_dir=tmp_path), planner=_RejectingPlanner()
+    )
+    outcome = orch.run("なんでもいいから全部やって")
+
+    assert outcome.plan_rejected is True
+    assert outcome.steps == ()
+    assert outcome.tool_ok is None
+    assert "何も実行していません" in outcome.llm_output
+    assert "テスト用の拒否理由" in outcome.llm_output
 
 
 def test_e2e_github_task_stub(orchestrator):

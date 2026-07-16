@@ -36,6 +36,13 @@ def _title_from_task(task_text: str) -> str | None:
 class ObsidianAdapter(ToolAdapter):
     name = "obsidian"
     supported_actions = ("save_note",)
+    action_docs = {
+        "save_note": (
+            "Obsidian vault に新規ノートを保存する。"
+            ' params: {"title": "ノートのタイトル", "body": "本文"}'
+        ),
+    }
+    write_actions = ("save_note",)
 
     def execute(self, request: ToolRequest) -> ToolResult:
         if request.action == "save_note":

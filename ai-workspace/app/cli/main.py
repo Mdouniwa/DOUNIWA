@@ -45,10 +45,16 @@ def _cmd_run(args: argparse.Namespace) -> int:
     print("=" * 60)
     print(f"タスク種別 : {outcome.task_kind}")
     print(f"使用モデル : {outcome.model_name}（{outcome.route_reason}）")
-    if outcome.tool_name:
-        print(f"使用ツール : {outcome.tool_name}")
-        print(f"ツール成否 : {'成功' if outcome.tool_ok else '失敗'}")
-        print(f"ツール結果 : {outcome.tool_output}")
+    print(f"実行計画   : {outcome.plan_source}（{len(outcome.steps)}ステップ）"
+          + (f" — {outcome.plan_note}" if outcome.plan_note else ""))
+    if outcome.plan_rejected:
+        print("注記       : 安全ガードにより計画を拒否（何も実行していません）")
+    total = len(outcome.steps)
+    for r in outcome.steps:
+        print(f"Step {r.index}/{total}: {r.label} → {r.status}")
+        if not r.skipped and r.output:
+            summary = r.output[:160].replace("\n", " ")
+            print(f"          {summary}")
     if outcome.stubbed:
         print("注記       : stub 応答を含みます（実接続なし）")
     print(f"記録ID     : {outcome.record_id}")

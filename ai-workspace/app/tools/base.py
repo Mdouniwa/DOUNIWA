@@ -44,6 +44,12 @@ class ToolAdapter(ABC):
     #: このツールがサポートする action 一覧（ドキュメント兼バリデーション用）
     supported_actions: tuple[str, ...] = ()
 
+    #: action -> 説明（params の書き方を含む）。planner のツールカタログ生成に使う
+    action_docs: dict[str, str] = {}
+
+    #: 副作用（保存・送信等）を伴う action。実行計画の安全ガードが回数を制限する
+    write_actions: tuple[str, ...] = ()
+
     @abstractmethod
     def execute(self, request: ToolRequest) -> ToolResult:
         """要求を実行する。失敗時は例外ではなく ok=False で返す。"""

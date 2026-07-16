@@ -52,6 +52,12 @@ class StubBrowserBackend(BrowserBackend):
 class BrowserAdapter(ToolAdapter):
     name = "browser"
     supported_actions = ("open_url", "act", "extract")
+    action_docs = {
+        "open_url": 'URLを開いてページ内容を取得する（未実装stub）。params: {"url": "https://..."}',
+        "act": '自然言語指示でページを操作する（未実装stub）。params: {"instruction": "指示"}',
+        "extract": '現在のページから情報を抽出する（未実装stub）。params: {"query": "抽出したい情報"}',
+    }
+    write_actions = ("act",)
 
     def __init__(self, backend: BrowserBackend | None = None) -> None:
         self._backend = backend or StubBrowserBackend()
