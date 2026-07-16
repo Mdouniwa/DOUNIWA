@@ -95,7 +95,7 @@ def test_e2e_multistep_plan_chains_outputs(tmp_path, monkeypatch):
     from app.orchestrator.planner import Plan, PlanStep
 
     class _FixedPlanner:
-        def plan(self, task_text, planning_model=None):
+        def plan(self, task_text, planning_model=None, context=""):
             return Plan(
                 steps=(
                     PlanStep("github", "read_readme", {}),
@@ -131,7 +131,7 @@ def test_e2e_rejected_plan_reports_honestly(tmp_path, monkeypatch):
     from app.orchestrator.planner import PlanRejected
 
     class _RejectingPlanner:
-        def plan(self, task_text, planning_model=None):
+        def plan(self, task_text, planning_model=None, context=""):
             raise PlanRejected("テスト用の拒否理由")
 
     orch = Orchestrator(
@@ -181,3 +181,61 @@ def test_unknown_model_raises(orchestrator):
     orch, _ = orchestrator
     with pytest.raises(KeyError):
         orch.run("こんにちは", explicit_model="gpt-99")
+
+
+# ----------------------------------------------------------------------
+# Phase B: 会話の継続性
+# ----------------------------------------------------------------------
+
+def _seed_record(store: MemoryStore, task_text: str, llm_output: str) -> None:
+    from app.memory.store import TaskRecord
+    store.save(TaskRecord(
+        task_text=task_text, task_kind="general", model_name="qwen-35b",
+        route_reason="test", tool_name=None, tool_action=None,
+        tool_output="", llm_output=llm_output, stubbed=False,
+    ))
+
+
+def test_load_recent_returns_latest_in_order(tmp_path):
+    store = MemoryStore(base_dir=tmp_path)
+    for i in range(5):
+        _seed_record(store, f"タスク{i}", f"結果{i}")
+    recent = store.load_recent(3)
+    assert [r["task_text"] for r in recent] == ["タスク2", "タスク3", "タスク4"]
+    assert store.load_recent(0) == []
+
+
+def test_recent_context_is_passed_to_prompts(tmp_path, monkeypatch):
+    """直近タスクの結果が planner・最終応答の両プロンプトに渡ること。"""
+    for var in ("LOCAL_LLM_BASE_URL", "GITHUB_TOKEN", "OBSIDIAN_VAULT_PATH",
+                "N8N_WEBHOOK_BASE_URL"):
+        monkeypatch.delenv(var, raising=False)
+    store = MemoryStore(base_dir=tmp_path)
+    _seed_record(store, "READMEを要約して", "前回の要約結果テキストです")
+
+    client = _RecordingClient()
+    orch = Orchestrator(client=client, store=store)
+    orch.run("さっきの結果をもう一度教えて")  # ツール不要 → steps なし
+
+    prompt = client.messages[-1].content
+    assert "直近のタスク履歴" in prompt
+    assert "前回の要約結果テキストです" in prompt
+    system = client.messages[0].content
+    assert "直近のタスク履歴" in system  # 履歴を今回の実行と混同しない制約
+
+
+def test_history_not_included_without_reference_words(tmp_path, monkeypatch):
+    """過去参照語のないタスクには履歴を渡さない（Qwenの思考発散対策）。"""
+    for var in ("LOCAL_LLM_BASE_URL", "GITHUB_TOKEN", "OBSIDIAN_VAULT_PATH",
+                "N8N_WEBHOOK_BASE_URL"):
+        monkeypatch.delenv(var, raising=False)
+    store = MemoryStore(base_dir=tmp_path)
+    _seed_record(store, "READMEを要約して", "前回の要約結果テキストです")
+
+    client = _RecordingClient()
+    orch = Orchestrator(client=client, store=store)
+    orch.run("量子力学を説明して")
+
+    prompt = client.messages[-1].content
+    assert "直近のタスク履歴" not in prompt
+    assert "前回の要約結果テキストです" not in prompt

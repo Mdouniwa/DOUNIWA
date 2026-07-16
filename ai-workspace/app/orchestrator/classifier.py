@@ -35,6 +35,14 @@ _RULES: list[tuple[tuple[str, ...], Classification]] = [
         Classification(TaskKind.CODE, "github", "read_readme"),
     ),
     (
+        ("検索して", "探して", "検索"),
+        Classification(TaskKind.WRITE_NOTE, "obsidian", "search_notes"),
+    ),
+    (
+        ("追記して", "追記"),
+        Classification(TaskKind.WRITE_NOTE, "obsidian", "append_note"),
+    ),
+    (
         ("obsidian", "メモ", "ノート", "保存して", "書き留め"),
         Classification(TaskKind.WRITE_NOTE, "obsidian", "save_note"),
     ),

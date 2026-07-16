@@ -19,6 +19,7 @@ client / store）に委譲し、この層は制御フローだけを持つ。
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import asdict, dataclass
 
 from app.llm.client import ChatMessage, LLMClient
@@ -41,7 +42,20 @@ _SYSTEM_PROMPT = (
     "完了したと述べてはいけません。ステータスが stub のステップは"
     "実際には実行されていません。一部のステップだけが成功した場合は、"
     "どこまで完了しどこで止まったかを正直に説明してください。"
+    "「直近のタスク履歴」が与えられた場合、過去の結果への質問には"
+    "その内容を参照して答えてよいですが、履歴にある操作を今回"
+    "実行したかのように述べてはいけません。"
 )
+
+# 直近何件のタスク記録をコンテキストとして渡すか（0で無効）
+_DEFAULT_CONTEXT_RECENT_TASKS = 3
+# コンテキストに載せる1レコードあたりの結果テキスト上限（文字）
+_MAX_CONTEXT_OUTPUT_CHARS = 400
+
+# タスク文がこれらを含むときだけ履歴をプロンプトに渡す。
+# 履歴を無条件に渡すと、reasoning モデル（Qwen3.6）が余計な文脈で
+# 思考を発散させ content が返らないことがあるため（2026-07-16 実測）。
+_HISTORY_HINTS = ("さっき", "さきほど", "先ほど", "前回", "直前", "この前", "履歴")
 
 # 最終プロンプトに載せる1ステップあたりの出力上限（文字）
 _MAX_STEP_OUTPUT_CHARS = 3000
@@ -73,6 +87,41 @@ class TaskOutcome:
     llm_output: str
     stubbed: bool
     record_id: str
+
+
+def _context_recent_tasks() -> int:
+    try:
+        return int(os.environ.get(
+            "CONTEXT_RECENT_TASKS", _DEFAULT_CONTEXT_RECENT_TASKS
+        ))
+    except ValueError:
+        return _DEFAULT_CONTEXT_RECENT_TASKS
+
+
+def _needs_history(task_text: str) -> bool:
+    return any(hint in task_text for hint in _HISTORY_HINTS)
+
+
+def _build_recent_context(records: list[dict]) -> str:
+    """直近のタスク記録を、プロンプトに載せる参考情報テキストへ変換する。"""
+    if not records:
+        return ""
+    lines = ["直近のタスク履歴（古い順・参考情報。今回実行した操作ではない）:"]
+    for r in records:
+        task = str(r.get("task_text") or "")[:100]
+        output = str(r.get("llm_output") or r.get("tool_output") or "").strip()
+        lines.append(f"- タスク: {task}")
+        lines.append(f"  結果: {output[:_MAX_CONTEXT_OUTPUT_CHARS]}")
+    return "\n".join(lines)
+
+
+def _previous_output(records: list[dict]) -> str | None:
+    """{{previous.output}} の解決に使う、直前タスクの結果テキスト。"""
+    if not records:
+        return None
+    last = records[-1]
+    output = str(last.get("llm_output") or last.get("tool_output") or "").strip()
+    return output or None
 
 
 def _kind_for_plan(plan: Plan) -> TaskKind:
@@ -133,7 +182,20 @@ class Orchestrator:
         # 明示指定モデルは計画生成にも使う（不正名はここで KeyError）
         planning_model = get_model(explicit_model) if explicit_model else None
 
+        # 0. 会話の継続性: 直近のタスク記録を参考情報として読み込む。
+        #    履歴テキストはタスク文が過去参照（「さっき」等）を含むときだけ
+        #    プロンプトに載せる。previous_output（{{previous.output}} 解決用）は
+        #    プロンプトに載らないため常に用意してよい。
+        recent = self._store.load_recent(_context_recent_tasks())
+        context = _build_recent_context(recent) if _needs_history(task_text) else ""
+        previous_output = _previous_output(recent)
+
         # 1. 実行計画の生成
+        # 注意: 履歴コンテキストは planner には渡さない。Qwen3.6(reasoning)は
+        # 履歴付きで計画させると思考がトークン上限まで発散し content が
+        # 返らないことを実測で確認済み（2026-07-16）。「さっきの結果」は
+        # {{previous.output}} プレースホルダで計画でき、履歴の実体は
+        # executor と最終応答プロンプトだけが持てばよい。
         rejected_reason: str | None = None
         try:
             plan = self._planner.plan(task_text, planning_model=planning_model)
@@ -152,7 +214,9 @@ class Orchestrator:
         step_results: list[StepResult] = []
         if rejected_reason is None and plan.steps:
             step_results = execute_plan(
-                plan, self._registry, task_text, extra_params=tool_params or {}
+                plan, self._registry, task_text,
+                extra_params=tool_params or {},
+                previous_output=previous_output,
             )
 
         # 4. 最終応答
@@ -165,14 +229,15 @@ class Orchestrator:
             chat_stubbed = False
         else:
             messages = [ChatMessage("system", _SYSTEM_PROMPT)]
+            parts = [f"タスク: {task_text}"]
+            if context:
+                parts.append(context)
             if step_results:
-                messages.append(ChatMessage(
-                    "user",
-                    f"タスク: {task_text}\n\n"
-                    f"{_build_step_report(plan, step_results)}",
-                ))
-            else:
+                parts.append(_build_step_report(plan, step_results))
+            if len(parts) == 1:
                 messages.append(ChatMessage("user", task_text))
+            else:
+                messages.append(ChatMessage("user", "\n\n".join(parts)))
             chat = self._client.chat(decision.model, messages)
             llm_output = chat.content
             chat_stubbed = chat.stubbed

@@ -35,6 +35,7 @@ DEFAULT_MAX_DURATION_S = 300.0
 MAX_EMBED_CHARS = 8000
 
 _PLACEHOLDER = re.compile(r"\{\{step(\d+)\.output\}\}")
+_PREV_PLACEHOLDER = re.compile(r"\{\{previous\.output\}\}")
 
 _file_logging_ready = False
 
@@ -111,16 +112,34 @@ def _referenced_steps(value) -> set[int]:
     return refs
 
 
-def _substitute(value, outputs: dict[int, str]):
-    """params 内の {{stepN.output}} を実際の出力で置き換える。"""
+def _references_previous(value) -> bool:
+    """params 内に {{previous.output}}（直前タスクの結果参照）があるか。"""
     if isinstance(value, str):
-        return _PLACEHOLDER.sub(
+        return bool(_PREV_PLACEHOLDER.search(value))
+    if isinstance(value, dict):
+        return any(_references_previous(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_references_previous(v) for v in value)
+    return False
+
+
+def _substitute(value, outputs: dict[int, str], previous_output: str | None):
+    """params 内の {{stepN.output}} / {{previous.output}} を実際の出力で置き換える。"""
+    if isinstance(value, str):
+        value = _PLACEHOLDER.sub(
             lambda m: outputs[int(m.group(1))][:MAX_EMBED_CHARS], value
         )
+        if previous_output is not None:
+            value = _PREV_PLACEHOLDER.sub(
+                lambda _m: previous_output[:MAX_EMBED_CHARS], value
+            )
+        return value
     if isinstance(value, dict):
-        return {k: _substitute(v, outputs) for k, v in value.items()}
+        return {
+            k: _substitute(v, outputs, previous_output) for k, v in value.items()
+        }
     if isinstance(value, list):
-        return [_substitute(v, outputs) for v in value]
+        return [_substitute(v, outputs, previous_output) for v in value]
     return value
 
 
@@ -145,6 +164,7 @@ def execute_plan(
     task_text: str,
     extra_params: dict | None = None,
     max_duration_s: float | None = None,
+    previous_output: str | None = None,
 ) -> list[StepResult]:
     """計画のステップを順に実行し、全ステップ分の StepResult を返す。
 
@@ -195,7 +215,18 @@ def execute_plan(
             logger.warning("step %d/%d %s -> スキップ: %s", i, total, step.label, reason)
             continue
 
-        resolved = _substitute(params, {n: results[n - 1].output for n in refs})
+        if previous_output is None and _references_previous(params):
+            reason = "{{previous.output}} を参照しているが直前のタスク記録がないため"
+            results.append(StepResult(
+                index=i, tool=step.tool, action=step.action, params=params,
+                skipped=True, skip_reason=reason,
+            ))
+            logger.warning("step %d/%d %s -> スキップ: %s", i, total, step.label, reason)
+            continue
+
+        resolved = _substitute(
+            params, {n: results[n - 1].output for n in refs}, previous_output
+        )
         logger.info("step %d/%d 開始: %s", i, total, step.label)
         t0 = time.monotonic()
         result = _run_single(registry, step, resolved, task_text)

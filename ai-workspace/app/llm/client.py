@@ -73,18 +73,40 @@ class LLMClient:
         }
 
         url = base_url.rstrip("/") + "/chat/completions"
-        try:
-            resp = httpx.post(url, json=payload, headers=headers, timeout=self._timeout_s)
-            resp.raise_for_status()
-            data = resp.json()
-            content = data["choices"][0]["message"]["content"]
-            return ChatResult(model_name=model.name, content=content, stubbed=False, raw=data)
-        except (httpx.HTTPError, KeyError, ValueError) as exc:
-            logger.warning(
-                "モデル %s の呼び出しに失敗（%s）。stub 応答にフォールバックします。",
-                model.name, exc,
-            )
-            return self._stub_result(model, messages)
+        for attempt in (1, 2):
+            try:
+                resp = httpx.post(url, json=payload, headers=headers,
+                                  timeout=self._timeout_s)
+                resp.raise_for_status()
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+                if content is None:
+                    raise KeyError("content is null")
+                return ChatResult(model_name=model.name, content=content,
+                                  stubbed=False, raw=data)
+            except (KeyError, ValueError) as exc:
+                # reasoning 系モデルが思考でトークンを使い切ると content が
+                # 欠落する。サンプリングの揺らぎで抜けることがあるため
+                # 1回だけリトライする。
+                if attempt == 1:
+                    logger.warning(
+                        "モデル %s の応答に content がありません（%s）。リトライします。",
+                        model.name, exc,
+                    )
+                    continue
+                logger.warning(
+                    "モデル %s の呼び出しに失敗（%s）。stub 応答にフォールバックします。",
+                    model.name, exc,
+                )
+                return self._stub_result(model, messages)
+            except httpx.HTTPError as exc:
+                # 接続系の失敗はリトライしない（サーバー停止時に待ち時間を倍にしない）
+                logger.warning(
+                    "モデル %s の呼び出しに失敗（%s）。stub 応答にフォールバックします。",
+                    model.name, exc,
+                )
+                return self._stub_result(model, messages)
+        return self._stub_result(model, messages)  # 到達しない（型の整合用）
 
     @staticmethod
     def _stub_result(model: ModelSpec, messages: list[ChatMessage]) -> ChatResult:

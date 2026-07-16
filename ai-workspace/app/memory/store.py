@@ -62,3 +62,28 @@ class MemoryStore:
             f.write(json.dumps(asdict(record), ensure_ascii=False) + "\n")
         logger.info("実行ログを保存しました: %s (id=%s)", path, record.id)
         return path
+
+    def load_recent(self, n: int = 3) -> list[dict]:
+        """直近のタスク記録を古い順で最大 n 件返す（会話の継続性用）。
+
+        新しい月次ファイルから遡って読む。壊れた行は読み飛ばす。
+        """
+        if n <= 0:
+            return []
+        records: list[dict] = []
+        for path in sorted(self._dir.glob("runs-*.jsonl"), reverse=True):
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                continue
+            for line in reversed(lines):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+                if len(records) >= n:
+                    return list(reversed(records))
+        return list(reversed(records))

@@ -90,6 +90,27 @@ def test_time_budget_skips_remaining_steps(tmp_path, monkeypatch):
     assert all("実行時間上限" in r.skip_reason for r in results)
 
 
+def test_previous_output_placeholder_resolved(tmp_path, monkeypatch):
+    monkeypatch.setenv("EXECUTOR_LOG_DIR", str(tmp_path))
+    plan = _plan(PlanStep("echo", "say", {"text": "前回: {{previous.output}}"}))
+    results = execute_plan(
+        plan, _registry(), "テスト", previous_output="以前の結果"
+    )
+    assert results[0].output == "echo:前回: 以前の結果"
+
+
+def test_previous_output_missing_skips_step(tmp_path, monkeypatch):
+    monkeypatch.setenv("EXECUTOR_LOG_DIR", str(tmp_path))
+    plan = _plan(
+        PlanStep("echo", "say", {"text": "{{previous.output}}"}),
+        PlanStep("echo", "say", {"text": "independent"}),
+    )
+    results = execute_plan(plan, _registry(), "テスト", previous_output=None)
+    assert results[0].skipped is True
+    assert "直前のタスク記録がない" in results[0].skip_reason
+    assert results[1].ok is True
+
+
 def test_unknown_action_is_reported_as_failure(tmp_path, monkeypatch):
     monkeypatch.setenv("EXECUTOR_LOG_DIR", str(tmp_path))
     plan = _plan(PlanStep("echo", "unknown", {}))

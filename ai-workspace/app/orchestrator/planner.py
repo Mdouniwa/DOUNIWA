@@ -73,8 +73,9 @@ _PROMPT_TEMPLATE = """あなたはユーザーのタスクを実行計画(JSON)�
 - JSONオブジェクトのみを出力する。説明文・前置き・コードフェンスは書かない。
 - 形式: {"steps": [{"tool": "<ツール名>", "action": "<action名>", "params": {...}}]}
 - 前のステップの出力を params の値に使うときは "{{step1.output}}" のように書く（番号は1始まり）。
+- 「さっきの結果」など直前のタスクの結果を params の値に使うときは "{{previous.output}}" と書く。
 - テキストの要約・変換・生成が必要なときは llm.generate ステップを挟む。
-- ツールが不要な雑談・単純な質問には {"steps": []} を返す。
+- ツールが不要な雑談・単純な質問・直前の結果についての質問には {"steps": []} を返す。
 - ステップ数は最大<<MAX_STEPS>>。
 
 例1: タスク「GitHubのREADMEを要約してObsidianに『リポジトリ概要』というメモで保存して」
@@ -85,7 +86,12 @@ _PROMPT_TEMPLATE = """あなたはユーザーのタスクを実行計画(JSON)�
 ]}
 
 例2: タスク「量子力学を説明して」
-{"steps": []}"""
+{"steps": []}
+
+例3: タスク「さっきの結果をObsidianに『まとめ』というメモで保存して」
+{"steps": [
+  {"tool": "obsidian", "action": "save_note", "params": {"title": "まとめ", "body": "{{previous.output}}"}}
+]}"""
 
 
 def _build_catalog(registry: ToolRegistry) -> str:
@@ -189,19 +195,28 @@ class Planner:
         self._model = model
 
     def plan(
-        self, task_text: str, planning_model: ModelSpec | None = None
+        self,
+        task_text: str,
+        planning_model: ModelSpec | None = None,
+        context: str = "",
     ) -> Plan:
         """タスク文から実行計画を生成する。
+
+        Args:
+            context: 直近のタスク履歴等の参考情報（「さっきの結果」の解釈用）。
 
         Raises:
             PlanRejected: 安全ガード（ステップ数・書き込み回数）違反。
         """
         model = planning_model or self._model or get_model(DEFAULT_MODEL)
+        user_message = f"タスク: {task_text}"
+        if context:
+            user_message += f"\n\n{context}"
         chat = self._client.chat(
             model,
             [
                 ChatMessage("system", build_planner_prompt(self._registry)),
-                ChatMessage("user", f"タスク: {task_text}"),
+                ChatMessage("user", user_message),
             ],
             temperature=0.1,
         )
