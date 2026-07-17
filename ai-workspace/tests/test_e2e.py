@@ -202,12 +202,14 @@ def test_unknown_model_raises(orchestrator):
 # Phase B: 会話の継続性
 # ----------------------------------------------------------------------
 
-def _seed_record(store: MemoryStore, task_text: str, llm_output: str) -> None:
+def _seed_record(store: MemoryStore, task_text: str, llm_output: str,
+                 session_id: str = "") -> None:
     from app.memory.store import TaskRecord
     store.save(TaskRecord(
         task_text=task_text, task_kind="general", model_name="qwen-35b",
         route_reason="test", tool_name=None, tool_action=None,
         tool_output="", llm_output=llm_output, stubbed=False,
+        session_id=session_id,
     ))
 
 
@@ -235,6 +237,25 @@ def test_recent_context_is_passed_to_prompts(tmp_path, monkeypatch):
     assert "前回の要約結果テキストです" in prompt
     system = client.messages[0].content
     assert "直近のタスク履歴" in system  # 履歴を今回の実行と混同しない制約
+
+
+def test_continuity_confined_to_same_session(tmp_path, monkeypatch):
+    """「さっきの結果」の参照対象が同一セッションに限定されること。
+
+    他の会話（セッションB）のタスクがコンテキストへ混入しないことの検証。
+    """
+    _isolate_env(tmp_path, monkeypatch)
+    store = MemoryStore(base_dir=tmp_path)
+    _seed_record(store, "会話Aのタスク", "会話Aの結果テキスト", session_id="sess-a")
+    _seed_record(store, "会話Bのタスク", "会話Bの結果テキスト", session_id="sess-b")
+
+    client = _RecordingClient()
+    orch = Orchestrator(client=client, store=store)
+    orch.run("さっきの結果をもう一度教えて", session_id="sess-a")
+
+    prompt = client.messages[-1].content
+    assert "会話Aの結果テキスト" in prompt
+    assert "会話Bの結果テキスト" not in prompt
 
 
 def test_history_not_included_without_reference_words(tmp_path, monkeypatch):

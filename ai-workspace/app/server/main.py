@@ -58,6 +58,7 @@ class RunEntry:
     task_text: str
     model: str | None
     started_at: str
+    session_id: str = ""
     status: str = "running"          # running | done | failed
     record_id: str | None = None
     error: str = ""
@@ -66,7 +67,8 @@ class RunEntry:
 
 class ChatRequest(BaseModel):
     message: str
-    model: str | None = None  # 内部モデル名（qwen-35b 等）。None = 自動選択
+    model: str | None = None       # 内部モデル名（qwen-35b 等）。None = 自動選択
+    session_id: str | None = None  # 会話ID。None なら新規発行して返す
 
 
 app = FastAPI(title="kuro-console", docs_url=None, redoc_url=None)
@@ -79,7 +81,11 @@ _runs_lock = threading.Lock()
 
 def _execute_run(entry: RunEntry) -> None:
     try:
-        outcome = _orchestrator.run(entry.task_text, explicit_model=entry.model)
+        outcome = _orchestrator.run(
+            entry.task_text,
+            explicit_model=entry.model,
+            session_id=entry.session_id or None,
+        )
         with entry.lock:
             entry.record_id = outcome.record_id
             entry.status = "failed" if outcome.tool_ok is False else "done"
@@ -100,16 +106,18 @@ def post_chat(req: ChatRequest) -> dict:
             get_model(req.model)
         except KeyError:
             raise HTTPException(status_code=400, detail=f"未知のモデル: {req.model}")
+    session_id = (req.session_id or "").strip() or uuid.uuid4().hex[:12]
     entry = RunEntry(
         run_id=uuid.uuid4().hex[:12],
         task_text=text,
         model=req.model or None,
         started_at=datetime.now().isoformat(timespec="seconds"),
+        session_id=session_id,
     )
     with _runs_lock:
         _runs[entry.run_id] = entry
     threading.Thread(target=_execute_run, args=(entry,), daemon=True).start()
-    return {"run_id": entry.run_id, "status": "running"}
+    return {"run_id": entry.run_id, "status": "running", "session_id": session_id}
 
 
 @app.get("/api/runs/{run_id}")
@@ -179,6 +187,7 @@ def _task_summary(record: dict) -> dict:
         "id": record.get("id"),
         "run_id": None,
         "status": status,
+        "session_id": record.get("session_id", ""),
         "title": record.get("task_text", ""),
         "time": _hhmm(record.get("timestamp", "")),
         "duration_s": round(sum(s.get("duration_s", 0) for s in steps), 1),
@@ -228,7 +237,10 @@ def get_tasks(limit: int = 20) -> dict:
                 "tools": [],
                 "log": "",
             })
-    records = [_task_summary(r) for r in reversed(_store.load_recent(limit))]
+    records = [
+        _task_summary(r)
+        for r in reversed(_store.load_recent(limit, any_session=True))
+    ]
     return {"tasks": running + records}
 
 
@@ -244,6 +256,45 @@ def get_task(record_id: str) -> dict:
     summary["plan"] = record.get("plan", [])
     summary["steps"] = record.get("step_results", [])
     return summary
+
+
+@app.get("/api/sessions")
+def get_sessions() -> dict:
+    return {"sessions": _store.list_sessions()}
+
+
+@app.get("/api/sessions/{session_id}")
+def get_session(session_id: str) -> dict:
+    records = _store.load_session(session_id)
+    return {
+        "session_id": session_id,
+        "messages": [
+            {
+                "id": r.get("id"),
+                "task_text": r.get("task_text", ""),
+                "llm_output": r.get("llm_output", ""),
+                "model": r.get("model_name", ""),
+                "time": _hhmm(r.get("timestamp", "")),
+                "stubbed": r.get("stubbed", False),
+            }
+            for r in records
+        ],
+    }
+
+
+@app.delete("/api/sessions/{session_id}")
+def delete_session(session_id: str) -> dict:
+    with _runs_lock:
+        active = any(
+            e.session_id == session_id and e.status == "running"
+            for e in _runs.values()
+        )
+    if active:
+        raise HTTPException(
+            status_code=409, detail="この会話は実行中のタスクがあるため削除できません"
+        )
+    deleted = _store.delete_session(session_id)
+    return {"session_id": session_id, "deleted": deleted}
 
 
 @app.get("/api/models")

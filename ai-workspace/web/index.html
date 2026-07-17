@@ -32,6 +32,13 @@
       <div class="metrics" id="metrics"></div>
     </div>
   </header>
+  <div class="session-bar">
+    <div class="session-inner">
+      <button class="sw-btn" id="newSession">＋ 新しい会話</button>
+      <select class="session-select" id="sessionSelect"></select>
+      <button class="sw-btn" id="delSession">削除</button>
+    </div>
+  </div>
   <main class="scroll" id="main">
     <div class="wrap" id="messages"></div>
   </main>
@@ -52,8 +59,19 @@
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { model: null, models: [], busy: false };
+  const state = {
+    model: null, models: [], busy: false,
+    session: localStorage.getItem('kuro.session') || null,  // null = 未保存の新規会話
+    sessions: [],
+    delArmed: false,
+  };
   const POLL_MS = 3000;
+
+  function setSession(sid) {
+    state.session = sid;
+    if (sid) localStorage.setItem('kuro.session', sid);
+    else localStorage.removeItem('kuro.session');
+  }
 
   function scrollDown() {
     requestAnimationFrame(() => { $('main').scrollTop = $('main').scrollHeight; });
@@ -108,20 +126,36 @@
     }
   }
 
-  async function loadHistory() {
+  async function refreshSessions() {
     try {
-      const data = await KURO.json('/api/tasks?limit=8');
-      for (const t of data.tasks.filter(t => t.status !== 'running')) {
-        addMsg('user', t.title, 'you · ' + t.time);
-      }
-      // 履歴は llm_output が必要なので個別取得（直近数件のみ）
-      const done = data.tasks.filter(t => t.status !== 'running' && t.id);
-      $('messages').innerHTML = '';
-      for (const t of done) {
-        const d = await KURO.json('/api/tasks/' + t.id);
-        addMsg('user', d.title, 'you · ' + d.time);
-        const meta = d.model + ' · ' + d.time + (d.stubbed ? ' · stub' : '');
-        addMsg('ai', d.llm_output, meta);
+      const data = await KURO.json('/api/sessions');
+      state.sessions = data.sessions;
+    } catch { state.sessions = []; }
+    const sel = $('sessionSelect');
+    sel.innerHTML = '';
+    if (!state.session || !state.sessions.some(s => s.session_id === state.session)) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '（新しい会話）';
+      sel.appendChild(opt);
+    }
+    for (const s of state.sessions) {
+      const opt = document.createElement('option');
+      opt.value = s.session_id;
+      opt.textContent = s.title + ' — ' + s.count + '件';
+      if (s.session_id === state.session) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  async function loadHistory() {
+    $('messages').innerHTML = '';
+    if (!state.session) return;  // 新規会話は空から始める
+    try {
+      const data = await KURO.json('/api/sessions/' + encodeURIComponent(state.session));
+      for (const m of data.messages) {
+        addMsg('user', m.task_text, 'you · ' + m.time);
+        addMsg('ai', m.llm_output, m.model + ' · ' + m.time + (m.stubbed ? ' · stub' : ''));
       }
     } catch (e) { /* 履歴なしは許容 */ }
   }
@@ -159,9 +193,15 @@
       const res = await KURO.json('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, model: state.model }),
+        body: JSON.stringify({
+          message: text, model: state.model, session_id: state.session,
+        }),
       });
+      if (res.session_id && res.session_id !== state.session) {
+        setSession(res.session_id);  // 新規会話の初回送信でIDが確定する
+      }
       await pollRun(res.run_id);
+      refreshSessions();
     } catch (e) {
       removeTyping();
       addMsg('ai', 'リクエストに失敗しました: ' + e.message, 'system');
@@ -181,6 +221,51 @@
   $('send').onclick = send;
   $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
 
+  $('newSession').onclick = async () => {
+    setSession(null);
+    disarmDelete();
+    await refreshSessions();
+    await loadHistory();
+  };
+
+  $('sessionSelect').onchange = async (e) => {
+    setSession(e.target.value || null);
+    disarmDelete();
+    await loadHistory();
+  };
+
+  // 削除は2段階（1回目で警告状態、3秒以内の2回目で実行）。
+  // ブラウザの confirm() は使わない。
+  function disarmDelete() {
+    state.delArmed = false;
+    const b = $('delSession');
+    b.classList.remove('danger-armed');
+    b.textContent = '削除';
+    clearTimeout(state.delTimer);
+  }
+
+  $('delSession').onclick = async () => {
+    if (!state.session) return;
+    if (!state.delArmed) {
+      state.delArmed = true;
+      const b = $('delSession');
+      b.classList.add('danger-armed');
+      b.textContent = '本当に削除?';
+      state.delTimer = setTimeout(disarmDelete, 3000);
+      return;
+    }
+    disarmDelete();
+    try {
+      await KURO.json('/api/sessions/' + encodeURIComponent(state.session),
+                      { method: 'DELETE' });
+      setSession(null);
+      await refreshSessions();
+      await loadHistory();
+    } catch (e) {
+      addMsg('ai', '削除に失敗しました: ' + e.message, 'system');
+    }
+  };
+
   (async () => {
     try {
       const data = await KURO.json('/api/models');
@@ -189,6 +274,7 @@
     renderPills();
     tickHealth();
     setInterval(tickHealth, 5000);
+    await refreshSessions();
     await loadHistory();
   })();
 })();

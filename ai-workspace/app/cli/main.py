@@ -40,6 +40,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         explicit_model=args.model,
         quality_first=args.quality,
         tool_params=tool_params,
+        session_id=args.session,
     )
 
     print("=" * 60)
@@ -105,6 +106,8 @@ def build_parser() -> argparse.ArgumentParser:
                      help="速度より品質を優先（70B級を使用）")
     run.add_argument("--param", action="append", metavar="KEY=VALUE",
                      help="ツールに渡す追加パラメータ（例: --param repo=owner/name）")
+    run.add_argument("--session", default=None, metavar="SESSION_ID",
+                     help="会話ID。同一IDのタスクだけが「さっきの結果」の参照対象になる")
     run.set_defaults(func=_cmd_run)
 
     serve = sub.add_parser("serve", help="Web UI（kuro·console）を起動する")

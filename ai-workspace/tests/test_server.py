@@ -86,3 +86,35 @@ def test_frontend_is_served(client):
     res = client.get("/")
     assert res.status_code == 200
     assert "kuro" in res.text
+
+
+def test_sessions_isolated_and_deletable(client):
+    # 会話A・Bでそれぞれタスクを実行
+    res_a = client.post("/api/chat", json={"message": "量子力学を説明して",
+                                           "session_id": "sess-a"}).json()
+    assert res_a["session_id"] == "sess-a"
+    _wait_done(client, res_a["run_id"])
+    res_b = client.post("/api/chat", json={"message": "相対性理論を説明して",
+                                           "session_id": "sess-b"}).json()
+    _wait_done(client, res_b["run_id"])
+
+    # 一覧に両方あり、各会話の履歴は自分のタスクだけを含む
+    sessions = client.get("/api/sessions").json()["sessions"]
+    assert {s["session_id"] for s in sessions} == {"sess-a", "sess-b"}
+    msgs_a = client.get("/api/sessions/sess-a").json()["messages"]
+    assert [m["task_text"] for m in msgs_a] == ["量子力学を説明して"]
+
+    # 会話Bを削除しても会話Aは無傷
+    deleted = client.delete("/api/sessions/sess-b").json()
+    assert deleted["deleted"] == 1
+    sessions = client.get("/api/sessions").json()["sessions"]
+    assert {s["session_id"] for s in sessions} == {"sess-a"}
+    assert client.get("/api/sessions/sess-a").json()["messages"]
+
+
+def test_chat_without_session_id_issues_new_one(client):
+    res = client.post("/api/chat", json={"message": "こんにちは"}).json()
+    assert res["session_id"]
+    run = _wait_done(client, res["run_id"])
+    record = client.get(f"/api/tasks/{run['record_id']}").json()
+    assert record["session_id"] == res["session_id"]

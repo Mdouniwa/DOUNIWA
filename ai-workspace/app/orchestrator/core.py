@@ -178,15 +178,20 @@ class Orchestrator:
         explicit_model: str | None = None,
         quality_first: bool = False,
         tool_params: dict | None = None,
+        session_id: str | None = None,
     ) -> TaskOutcome:
         # 明示指定モデルは計画生成にも使う（不正名はここで KeyError）
         planning_model = get_model(explicit_model) if explicit_model else None
 
         # 0. 会話の継続性: 直近のタスク記録を参考情報として読み込む。
+        #    対象は同一セッション（session_id なしなら レガシー/CLI 枠）に限定し、
+        #    他の会話のタスクがコンテキストへ混入しないようにする。
         #    履歴テキストはタスク文が過去参照（「さっき」等）を含むときだけ
         #    プロンプトに載せる。previous_output（{{previous.output}} 解決用）は
         #    プロンプトに載らないため常に用意してよい。
-        recent = self._store.load_recent(_context_recent_tasks())
+        recent = self._store.load_recent(
+            _context_recent_tasks(), session_id=session_id
+        )
         context = _build_recent_context(recent) if _needs_history(task_text) else ""
         previous_output = _previous_output(recent)
 
@@ -257,6 +262,7 @@ class Orchestrator:
 
         record = TaskRecord(
             task_text=task_text,
+            session_id=session_id or "",
             task_kind=kind.value,
             model_name=decision.model.name,
             route_reason=decision.reason,
