@@ -32,29 +32,31 @@
       <div class="metrics" id="metrics"></div>
     </div>
   </header>
-  <div class="session-bar">
-    <div class="session-inner">
-      <button class="sw-btn" id="newSession">＋ 新しい会話</button>
-      <select class="session-select" id="sessionSelect"></select>
-      <button class="sw-btn" id="delSession">削除</button>
+  <div class="body-row">
+    <aside class="sidebar">
+      <button class="new-conv" id="newSession"><span class="new-conv-plus">＋</span> 新しい会話</button>
+      <div class="sidebar-label">CONVERSATIONS</div>
+      <div class="conv-list" id="convList"></div>
+    </aside>
+    <div class="chat-col">
+      <main class="scroll" id="main">
+        <div class="wrap" id="messages"></div>
+      </main>
+      <footer class="bar">
+        <div class="input-row">
+          <div class="input-wrap">
+            <span class="prompt-char">❯</span>
+            <input id="input" placeholder="メッセージを入力" autocomplete="off">
+          </div>
+          <button class="send" id="send">↑</button>
+        </div>
+        <div class="foot-note">
+          <span>local inference · telemetry off</span>
+          <span>enter ↵ 送信</span>
+        </div>
+      </footer>
     </div>
   </div>
-  <main class="scroll" id="main">
-    <div class="wrap" id="messages"></div>
-  </main>
-  <footer class="bar">
-    <div class="input-row">
-      <div class="input-wrap">
-        <span class="prompt-char">❯</span>
-        <input id="input" placeholder="メッセージを入力" autocomplete="off">
-      </div>
-      <button class="send" id="send">↑</button>
-    </div>
-    <div class="foot-note">
-      <span>local inference · telemetry off</span>
-      <span>enter ↵ 送信</span>
-    </div>
-  </footer>
 </div>
 <script>
 (() => {
@@ -63,7 +65,8 @@
     model: null, models: [], busy: false,
     session: localStorage.getItem('kuro.session') || null,  // null = 未保存の新規会話
     sessions: [],
-    delArmed: false,
+    armedSid: null,   // 削除2段階目待ちの会話ID
+    armTimer: null,
   };
   const POLL_MS = 3000;
 
@@ -104,10 +107,6 @@
     if (el) el.remove();
   }
 
-  function hhmm(iso) {
-    try { return new Date(iso).toTimeString().slice(0, 5); } catch { return '--:--'; }
-  }
-
   function renderPills() {
     const box = $('modelPills');
     box.innerHTML = '';
@@ -126,27 +125,80 @@
     }
   }
 
+  // ---- サイドバー（会話一覧） ----------------------------------------
+
+  function disarmDelete() {
+    state.armedSid = null;
+    clearTimeout(state.armTimer);
+  }
+
+  async function deleteSession(sid) {
+    try {
+      await KURO.json('/api/sessions/' + encodeURIComponent(sid), { method: 'DELETE' });
+      if (state.session === sid) {
+        setSession(null);
+        await loadHistory();
+      }
+      await refreshSessions();
+    } catch (e) {
+      addMsg('ai', '削除に失敗しました: ' + e.message, 'system');
+    }
+  }
+
+  function convItem(s) {
+    const item = document.createElement('div');
+    item.className = 'conv-item' + (s.session_id === state.session ? ' active' : '');
+    const armed = state.armedSid === s.session_id;
+    item.innerHTML =
+      '<div class="conv-title">' + KURO.esc(s.title || '（無題）') + '</div>' +
+      '<div class="conv-meta"><span>' + s.count + '件 · ' +
+      KURO.esc((s.last_at || '').slice(5, 10).replace('-', '/')) + '</span>' +
+      '<span class="conv-del' + (armed ? ' armed' : '') + '">' +
+      (armed ? '本当に削除?' : '削除') + '</span></div>';
+    item.onclick = async () => {
+      disarmDelete();
+      setSession(s.session_id);
+      await refreshSessions();
+      await loadHistory();
+    };
+    // 削除は2段階（1回目で警告状態、3秒以内の2回目で実行）。confirm() は使わない。
+    item.querySelector('.conv-del').onclick = async (e) => {
+      e.stopPropagation();
+      if (state.armedSid !== s.session_id) {
+        disarmDelete();
+        state.armedSid = s.session_id;
+        state.armTimer = setTimeout(() => { disarmDelete(); renderConvList(); }, 3000);
+        renderConvList();
+        return;
+      }
+      disarmDelete();
+      await deleteSession(s.session_id);
+    };
+    return item;
+  }
+
+  function renderConvList() {
+    const list = $('convList');
+    list.innerHTML = '';
+    if (!state.sessions.length) {
+      const empty = document.createElement('div');
+      empty.className = 'conv-empty';
+      empty.textContent = 'まだ会話がありません';
+      list.appendChild(empty);
+      return;
+    }
+    for (const s of state.sessions) list.appendChild(convItem(s));
+  }
+
   async function refreshSessions() {
     try {
       const data = await KURO.json('/api/sessions');
       state.sessions = data.sessions;
     } catch { state.sessions = []; }
-    const sel = $('sessionSelect');
-    sel.innerHTML = '';
-    if (!state.session || !state.sessions.some(s => s.session_id === state.session)) {
-      const opt = document.createElement('option');
-      opt.value = '';
-      opt.textContent = '（新しい会話）';
-      sel.appendChild(opt);
-    }
-    for (const s of state.sessions) {
-      const opt = document.createElement('option');
-      opt.value = s.session_id;
-      opt.textContent = s.title + ' — ' + s.count + '件';
-      if (s.session_id === state.session) opt.selected = true;
-      sel.appendChild(opt);
-    }
+    renderConvList();
   }
+
+  // ---- チャット -------------------------------------------------------
 
   async function loadHistory() {
     $('messages').innerHTML = '';
@@ -222,48 +274,10 @@
   $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
 
   $('newSession').onclick = async () => {
-    setSession(null);
     disarmDelete();
+    setSession(null);
     await refreshSessions();
     await loadHistory();
-  };
-
-  $('sessionSelect').onchange = async (e) => {
-    setSession(e.target.value || null);
-    disarmDelete();
-    await loadHistory();
-  };
-
-  // 削除は2段階（1回目で警告状態、3秒以内の2回目で実行）。
-  // ブラウザの confirm() は使わない。
-  function disarmDelete() {
-    state.delArmed = false;
-    const b = $('delSession');
-    b.classList.remove('danger-armed');
-    b.textContent = '削除';
-    clearTimeout(state.delTimer);
-  }
-
-  $('delSession').onclick = async () => {
-    if (!state.session) return;
-    if (!state.delArmed) {
-      state.delArmed = true;
-      const b = $('delSession');
-      b.classList.add('danger-armed');
-      b.textContent = '本当に削除?';
-      state.delTimer = setTimeout(disarmDelete, 3000);
-      return;
-    }
-    disarmDelete();
-    try {
-      await KURO.json('/api/sessions/' + encodeURIComponent(state.session),
-                      { method: 'DELETE' });
-      setSession(null);
-      await refreshSessions();
-      await loadHistory();
-    } catch (e) {
-      addMsg('ai', '削除に失敗しました: ' + e.message, 'system');
-    }
   };
 
   (async () => {
