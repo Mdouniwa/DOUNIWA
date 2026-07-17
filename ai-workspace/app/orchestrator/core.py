@@ -45,6 +45,9 @@ _SYSTEM_PROMPT = (
     "「直近のタスク履歴」が与えられた場合、過去の結果への質問には"
     "その内容を参照して答えてよいですが、履歴にある操作を今回"
     "実行したかのように述べてはいけません。"
+    "実行結果が示されていないタスクでは、ツールは一切実行されていません。"
+    "ファイルの編集・保存・送信などの操作を求められたのに実行結果がない場合は、"
+    "「実行していない」と正直に伝えてください。"
 )
 
 # 直近何件のタスク記録をコンテキストとして渡すか（0で無効）
@@ -63,6 +66,7 @@ _MAX_STEP_OUTPUT_CHARS = 3000
 # 計画の先頭ツール -> ルーティング用タスク種別（llm は変換ステップなので除外）
 _TOOL_TO_KIND = {
     "github": TaskKind.CODE,
+    "noircode": TaskKind.CODING,
     "obsidian": TaskKind.WRITE_NOTE,
     "n8n": TaskKind.AUTOMATION,
     "browser": TaskKind.BROWSER,

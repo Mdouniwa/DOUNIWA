@@ -107,12 +107,25 @@
     } else if (step.tool === 'n8n') {
       if (d.status_code) meta += metaRow('レスポンス', 'HTTP ' + d.status_code, 'ok');
       if (d.count != null) meta += metaRow('件数', String(d.count));
+    } else if (step.tool === 'noircode') {
+      if (d.dir) meta += metaRow('対象DIR', d.dir, 'path');
+      if (d.path) meta += metaRow('FILE', d.path, 'path');
+      if (d.commit) meta += metaRow('COMMIT', d.commit, 'ok');
+      if (d.exit_code != null) meta += metaRow('EXIT CODE', String(d.exit_code),
+                                               d.exit_code === 0 ? 'ok' : 'warn');
     }
     meta += metaRow('タスク', '#' + task.id + ' · ' + task.title);
     meta += metaRow('モデル', task.model_label || task.model);
     meta += metaRow('種別', task.tag + ' · 計画: ' + task.plan_source);
     $('content').innerHTML =
       panel('CALL META', '', '<div class="meta-grid">' + meta + '</div>');
+
+    // Nacht Code の変更差分
+    if (step.tool === 'noircode' && d.diff) {
+      $('content').innerHTML += panel(
+        'DIFF', 'unified · ' + new Blob([d.diff]).size + ' B',
+        '<pre>' + KURO.esc(d.diff) + '</pre>');
+    }
 
     // PARAMS（executor が解決した実引数）
     const paramsJson = JSON.stringify(step.params || {}, null, 2);

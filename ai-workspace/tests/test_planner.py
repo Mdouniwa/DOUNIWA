@@ -25,7 +25,7 @@ class _FakeLLM:
         self._content = content
         self._stubbed = stubbed
 
-    def chat(self, model, messages, temperature=0.3) -> ChatResult:
+    def chat(self, model, messages, temperature=0.3, max_tokens=None) -> ChatResult:
         return ChatResult(
             model_name=model.name, content=self._content, stubbed=self._stubbed
         )

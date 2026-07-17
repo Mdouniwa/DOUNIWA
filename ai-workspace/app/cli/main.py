@@ -64,6 +64,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_noircode(args: argparse.Namespace) -> int:
+    from app.tools.noircode.runner import run_noircode_task
+
+    return run_noircode_task(
+        args.dir, args.task, assume_yes=args.yes, model_name=args.model
+    )
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -109,6 +117,18 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--session", default=None, metavar="SESSION_ID",
                      help="会話ID。同一IDのタスクだけが「さっきの結果」の参照対象になる")
     run.set_defaults(func=_cmd_run)
+
+    noir = sub.add_parser(
+        "noircode",
+        help="Nacht Code: 指定ディレクトリ内のコードを読み書きするエージェント",
+    )
+    noir.add_argument("task", help="コーディングタスクの指示")
+    noir.add_argument("--dir", required=True,
+                      help="対象プロジェクトディレクトリ（絶対パス・必須）")
+    noir.add_argument("--yes", action="store_true",
+                      help="git管理外ディレクトリでも実行する（バックアップ確認済みの明示）")
+    noir.add_argument("--model", default=None, help="使用モデルを明示指定")
+    noir.set_defaults(func=_cmd_noircode)
 
     serve = sub.add_parser("serve", help="Web UI（kuro·console）を起動する")
     serve.add_argument("--host", default="127.0.0.1")

@@ -51,6 +51,7 @@ class LLMClient:
         model: ModelSpec,
         messages: list[ChatMessage],
         temperature: float = 0.3,
+        max_tokens: int | None = None,
     ) -> ChatResult:
         base_url = model.resolve_endpoint()
         if not base_url:
@@ -69,7 +70,7 @@ class LLMClient:
             "model": model.served_model_name,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "temperature": temperature,
-            "max_tokens": DEFAULT_MAX_TOKENS,
+            "max_tokens": max_tokens or DEFAULT_MAX_TOKENS,
         }
 
         url = base_url.rstrip("/") + "/chat/completions"

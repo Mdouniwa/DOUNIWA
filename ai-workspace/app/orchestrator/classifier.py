@@ -13,7 +13,8 @@ from enum import Enum
 
 
 class TaskKind(str, Enum):
-    CODE = "code"              # コード読解・レビュー・リポジトリ操作
+    CODE = "code"              # コード読解・レビュー・リポジトリ操作（読む側）
+    CODING = "coding"          # Nacht Code: コードを書く・編集する側
     WRITE_NOTE = "write_note"  # メモ・ドキュメントの作成/保存
     AUTOMATION = "automation"  # n8n 等のワークフロー起動
     BROWSER = "browser"        # Web閲覧・操作（今日は stub）
@@ -30,6 +31,13 @@ class Classification:
 # キーワード -> 分類。マッチしたキーワード数が最多のルールを採用し、
 # 同数の場合は上のルールを優先する。
 _RULES: list[tuple[tuple[str, ...], Classification]] = [
+    (
+        # Nacht Code（コードを「書く・編集する」）。GitHub の「読む」系と区別する
+        ("実装して", "リファクタ", "コードを修正", "コードを書いて",
+         "コードを直して", "テストを直して", "バグを直して", "コメントを追加",
+         "docstring", ".py", "関数に"),
+        Classification(TaskKind.CODING, "noircode", "list_files"),
+    ),
     (
         ("github", "リポジトリ", "readme", "プルリク", "pull request", "issue"),
         Classification(TaskKind.CODE, "github", "read_readme"),

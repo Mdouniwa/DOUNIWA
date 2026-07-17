@@ -38,6 +38,7 @@ def build_default_registry() -> ToolRegistry:
     from app.tools.browser.adapter import BrowserAdapter
     from app.tools.github.adapter import GitHubAdapter
     from app.tools.n8n.adapter import N8nAdapter
+    from app.tools.noircode.adapter import NoirCodeAdapter
     from app.tools.obsidian.adapter import ObsidianAdapter
 
     registry = ToolRegistry()
@@ -45,4 +46,5 @@ def build_default_registry() -> ToolRegistry:
     registry.register(ObsidianAdapter())
     registry.register(N8nAdapter())
     registry.register(BrowserAdapter())
+    registry.register(NoirCodeAdapter())
     return registry

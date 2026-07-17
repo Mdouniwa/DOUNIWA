@@ -1,7 +1,7 @@
 /* kuro·console — 共通ヘルパー */
 
 const KURO = {
-  GLYPHS: { github: '◆', obsidian: '◇', n8n: '⬡', llm: '✳', browser: '▣' },
+  GLYPHS: { github: '◆', obsidian: '◇', n8n: '⬡', llm: '✳', browser: '▣', noircode: '▚' },
 
   glyph(tool) { return KURO.GLYPHS[tool] || '·'; },
 

@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 # ここを書き換えるだけでルーティング方針を変えられる。
 _POLICY: dict[TaskKind, str] = {
     TaskKind.CODE: "qwen-35b",
+    TaskKind.CODING: "qwen-35b",  # Nacht Code（コード編集）
     TaskKind.WRITE_NOTE: "gemma-31b",
     TaskKind.AUTOMATION: "qwen-35b",
     TaskKind.BROWSER: "qwen-35b",

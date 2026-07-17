@@ -61,7 +61,7 @@ class _RecordingClient:
         self.messages: list[ChatMessage] = []
         self.calls = 0
 
-    def chat(self, model, messages, temperature=0.3) -> ChatResult:
+    def chat(self, model, messages, temperature=0.3, max_tokens=None) -> ChatResult:
         self.calls += 1
         self.messages = messages
         return ChatResult(model_name=model.name, content="ok", stubbed=True)
