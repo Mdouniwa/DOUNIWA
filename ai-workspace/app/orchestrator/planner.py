@@ -12,6 +12,9 @@ registry の各アダプタ（supported_actions / action_docs）から動的に�
   - LLM出力のJSONが解釈できない・LLM未接続(stub)の場合は、従来の
     キーワード分類（classifier.classify_task）による単一ステップ計画に
     フォールバックし、その事実を Plan.note に残す。
+  - 高速パス: キーワード分類が GENERAL（ツール語彙を一切含まない）の入力は、
+    計画生成のLLM呼び出し自体をスキップして空計画（source="fast"）を返す。
+    挨拶や一般質問で planner の推論待ち（数秒〜十数秒）を挟まないため。
 """
 
 from __future__ import annotations
@@ -59,7 +62,7 @@ class PlanStep:
 @dataclass(frozen=True)
 class Plan:
     steps: tuple[PlanStep, ...]
-    source: str            # "llm" | "rules"（キーワード分類フォールバック）
+    source: str            # "llm" | "rules"(フォールバック) | "fast"(planner省略)
     note: str = ""         # フォールバック理由等の補足
     stubbed: bool = False  # 計画生成LLMが stub だったか
 
@@ -208,6 +211,15 @@ class Planner:
         Raises:
             PlanRejected: 安全ガード（ステップ数・書き込み回数）違反。
         """
+        # 高速パス: ツール語彙を含まない一般対話は planner のLLM呼び出しを省く
+        quick = classify_task(task_text)
+        if quick.kind.value == "general" and quick.tool_name is None:
+            logger.info("実行計画(fast): ツール語彙なしのため planner をスキップ")
+            return Plan(
+                steps=(), source="fast",
+                note="ツール語彙を含まないため計画生成をスキップ",
+            )
+
         model = planning_model or self._model or get_model(DEFAULT_MODEL)
         user_message = f"タスク: {task_text}"
         if context:

@@ -77,7 +77,7 @@ class TaskOutcome:
     task_kind: str
     model_name: str
     route_reason: str
-    plan_source: str           # "llm" | "rules"
+    plan_source: str           # "llm" | "rules" | "fast"
     plan_note: str             # フォールバック理由・拒否理由等
     plan_rejected: bool        # 安全ガードで拒否され、何も実行していない
     steps: tuple[StepResult, ...]

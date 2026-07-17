@@ -68,9 +68,32 @@ def test_plan_parses_llm_json(registry):
 
 
 def test_plan_empty_steps_for_chat(registry):
-    plan = Planner(_FakeLLM('{"steps": []}'), registry).plan("量子力学を説明して")
+    # ツール語彙(github)を含むので高速パスは通らず、LLMが空計画を返すケース
+    plan = Planner(_FakeLLM('{"steps": []}'), registry).plan("GitHubって何のサービス?")
     assert plan.source == "llm"
     assert plan.steps == ()
+
+
+class _ExplodingLLM:
+    """呼ばれたらテスト失敗にする偽クライアント（高速パスの検証用）。"""
+
+    def chat(self, model, messages, temperature=0.3):
+        raise AssertionError("高速パスのはずが planner がLLMを呼び出した")
+
+
+def test_fast_path_skips_planner_llm_for_plain_chat(registry):
+    plan = Planner(_ExplodingLLM(), registry).plan("こんにちは")
+    assert plan.source == "fast"
+    assert plan.steps == ()
+    assert plan.stubbed is False
+
+
+def test_fast_path_not_taken_when_tool_vocab_present(registry):
+    # ツール語彙があれば必ず planner（LLM）を通る
+    content = '{"steps": [{"tool": "obsidian", "action": "save_note", "params": {}}]}'
+    plan = Planner(_FakeLLM(content), registry).plan("Obsidianにメモを保存して")
+    assert plan.source == "llm"
+    assert [s.label for s in plan.steps] == ["obsidian.save_note"]
 
 
 def test_plan_falls_back_to_rules_on_broken_json(registry):

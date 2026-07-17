@@ -39,7 +39,7 @@ class TaskRecord:
     llm_output: str
     stubbed: bool
     tool_ok: bool | None = None  # ツール未使用なら None
-    plan_source: str = ""        # "llm" | "rules"（実行計画の生成方式）
+    plan_source: str = ""        # "llm" | "rules" | "fast"（実行計画の生成方式）
     plan_note: str = ""          # フォールバック理由・拒否理由等
     plan: list = field(default_factory=list)          # 計画ステップの一覧
     step_results: list = field(default_factory=list)  # ステップごとの実行事実

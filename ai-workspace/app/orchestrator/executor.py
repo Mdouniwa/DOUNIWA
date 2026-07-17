@@ -37,26 +37,37 @@ MAX_EMBED_CHARS = 8000
 _PLACEHOLDER = re.compile(r"\{\{step(\d+)\.output\}\}")
 _PREV_PLACEHOLDER = re.compile(r"\{\{previous\.output\}\}")
 
-_file_logging_ready = False
+_file_handler: logging.FileHandler | None = None
+_file_handler_dir: str | None = None
 
 
 def _ensure_file_logging() -> None:
-    """executor の進捗をファイルにも書く。失敗しても実行は止めない。"""
-    global _file_logging_ready
-    if _file_logging_ready:
+    """executor の進捗をファイルにも書く。失敗しても実行は止めない。
+
+    EXECUTOR_LOG_DIR の変更（pytest の monkeypatch 等）に追従して
+    ハンドラを張り替える。テストのログが本番の data/logs に混ざるのを防ぐため。
+    """
+    global _file_handler, _file_handler_dir
+    log_dir = os.environ.get("EXECUTOR_LOG_DIR", "data/logs")
+    if _file_handler is not None and _file_handler_dir == log_dir:
         return
-    _file_logging_ready = True
-    log_dir = Path(os.environ.get("EXECUTOR_LOG_DIR", "data/logs"))
+    if _file_handler is not None:
+        logger.removeHandler(_file_handler)
+        _file_handler.close()
+        _file_handler = None
+    _file_handler_dir = log_dir
     try:
-        log_dir.mkdir(parents=True, exist_ok=True)
+        path = Path(log_dir)
+        path.mkdir(parents=True, exist_ok=True)
         handler = logging.FileHandler(
-            log_dir / f"executor-{datetime.now():%Y-%m-%d}.log", encoding="utf-8"
+            path / f"executor-{datetime.now():%Y-%m-%d}.log", encoding="utf-8"
         )
         handler.setFormatter(
             logging.Formatter("%(asctime)s %(levelname)s %(message)s")
         )
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
+        _file_handler = handler
     except OSError as exc:
         logger.warning("executor ログファイルを開けません（%s）。続行します。", exc)
 

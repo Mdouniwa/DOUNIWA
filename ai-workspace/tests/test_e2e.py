@@ -15,12 +15,17 @@ from app.orchestrator.classifier import TaskKind, classify_task
 from app.orchestrator.core import Orchestrator
 
 
-@pytest.fixture
-def orchestrator(tmp_path, monkeypatch):
-    # 実接続系の環境変数を確実に外し、ログは一時ディレクトリへ
+def _isolate_env(tmp_path, monkeypatch):
+    """実接続系の環境変数を外し、executor ログも一時ディレクトリへ向ける。"""
     for var in ("LOCAL_LLM_BASE_URL", "GITHUB_TOKEN", "OBSIDIAN_VAULT_PATH",
                 "N8N_WEBHOOK_BASE_URL"):
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("EXECUTOR_LOG_DIR", str(tmp_path / "logs"))
+
+
+@pytest.fixture
+def orchestrator(tmp_path, monkeypatch):
+    _isolate_env(tmp_path, monkeypatch)
     return Orchestrator(store=MemoryStore(base_dir=tmp_path)), tmp_path
 
 
@@ -50,12 +55,14 @@ def test_classify_prefers_rule_with_most_keyword_hits():
 
 
 class _RecordingClient:
-    """LLMに渡された messages を記録する偽クライアント。"""
+    """LLMに渡された messages と呼び出し回数を記録する偽クライアント。"""
 
     def __init__(self) -> None:
         self.messages: list[ChatMessage] = []
+        self.calls = 0
 
     def chat(self, model, messages, temperature=0.3) -> ChatResult:
+        self.calls += 1
         self.messages = messages
         return ChatResult(model_name=model.name, content="ok", stubbed=True)
 
@@ -66,9 +73,7 @@ def test_tool_status_is_passed_to_llm_prompt(tmp_path, monkeypatch):
     回帰テスト: 実行結果の成否がLLMに渡らず、未実行の操作を
     「完了した」と報告してしまう問題への対策の検証。
     """
-    for var in ("LOCAL_LLM_BASE_URL", "GITHUB_TOKEN", "OBSIDIAN_VAULT_PATH",
-                "N8N_WEBHOOK_BASE_URL"):
-        monkeypatch.delenv(var, raising=False)
+    _isolate_env(tmp_path, monkeypatch)
     client = _RecordingClient()
     orch = Orchestrator(client=client, store=MemoryStore(base_dir=tmp_path))
 
@@ -83,10 +88,22 @@ def test_tool_status_is_passed_to_llm_prompt(tmp_path, monkeypatch):
     assert "実際には実行されていない" in prompt
 
 
+def test_fast_path_uses_single_llm_call_for_plain_chat(tmp_path, monkeypatch):
+    """ツール語彙のない入力は planner を省き、LLM呼び出しが1回で済むこと。"""
+    _isolate_env(tmp_path, monkeypatch)
+    client = _RecordingClient()
+    orch = Orchestrator(client=client, store=MemoryStore(base_dir=tmp_path))
+
+    outcome = orch.run("こんにちは")
+
+    assert outcome.plan_source == "fast"
+    assert outcome.steps == ()
+    assert client.calls == 1  # 最終応答のみ（計画生成のLLM呼び出しなし）
+
+
 def test_e2e_multistep_plan_chains_outputs(tmp_path, monkeypatch):
     """複数ステップ計画: {{stepN.output}} が後段に差し込まれて実行されること。"""
-    for var in ("LOCAL_LLM_BASE_URL", "GITHUB_TOKEN", "N8N_WEBHOOK_BASE_URL"):
-        monkeypatch.delenv(var, raising=False)
+    _isolate_env(tmp_path, monkeypatch)
     vault = tmp_path / "vault"
     vault.mkdir()
     monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(vault))
@@ -124,9 +141,7 @@ def test_e2e_multistep_plan_chains_outputs(tmp_path, monkeypatch):
 
 def test_e2e_rejected_plan_reports_honestly(tmp_path, monkeypatch):
     """安全ガードで拒否された計画は何も実行せず、その旨を明記すること。"""
-    for var in ("LOCAL_LLM_BASE_URL", "GITHUB_TOKEN", "OBSIDIAN_VAULT_PATH",
-                "N8N_WEBHOOK_BASE_URL"):
-        monkeypatch.delenv(var, raising=False)
+    _isolate_env(tmp_path, monkeypatch)
 
     from app.orchestrator.planner import PlanRejected
 
@@ -206,10 +221,8 @@ def test_load_recent_returns_latest_in_order(tmp_path):
 
 
 def test_recent_context_is_passed_to_prompts(tmp_path, monkeypatch):
-    """直近タスクの結果が planner・最終応答の両プロンプトに渡ること。"""
-    for var in ("LOCAL_LLM_BASE_URL", "GITHUB_TOKEN", "OBSIDIAN_VAULT_PATH",
-                "N8N_WEBHOOK_BASE_URL"):
-        monkeypatch.delenv(var, raising=False)
+    """直近タスクの結果が最終応答プロンプトに渡ること。"""
+    _isolate_env(tmp_path, monkeypatch)
     store = MemoryStore(base_dir=tmp_path)
     _seed_record(store, "READMEを要約して", "前回の要約結果テキストです")
 
@@ -226,9 +239,7 @@ def test_recent_context_is_passed_to_prompts(tmp_path, monkeypatch):
 
 def test_history_not_included_without_reference_words(tmp_path, monkeypatch):
     """過去参照語のないタスクには履歴を渡さない（Qwenの思考発散対策）。"""
-    for var in ("LOCAL_LLM_BASE_URL", "GITHUB_TOKEN", "OBSIDIAN_VAULT_PATH",
-                "N8N_WEBHOOK_BASE_URL"):
-        monkeypatch.delenv(var, raising=False)
+    _isolate_env(tmp_path, monkeypatch)
     store = MemoryStore(base_dir=tmp_path)
     _seed_record(store, "READMEを要約して", "前回の要約結果テキストです")
 
