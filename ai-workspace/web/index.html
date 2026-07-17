@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kuro·console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="kuro.css">
+<script src="kuro.js"></script>
+</head>
+<body>
+<div class="app">
+  <div class="noise"></div>
+  <header class="bar">
+    <div class="logo">
+      <div class="logo-box">❯</div>
+      <div class="logo-text">kuro<span>·console</span></div>
+      <div class="ver">v0.5.0</div>
+    </div>
+    <nav class="tabs">
+      <span class="tab active">CHAT</span>
+      <a class="tab" href="tasks.html">TASKS</a>
+    </nav>
+    <div class="pills" id="modelPills"></div>
+    <div class="head-right">
+      <div class="status">
+        <span class="dot idle" id="statusDot"></span>
+        <span class="status-label idle" id="statusLabel">待機</span>
+      </div>
+      <div class="metrics" id="metrics"></div>
+    </div>
+  </header>
+  <main class="scroll" id="main">
+    <div class="wrap" id="messages"></div>
+  </main>
+  <footer class="bar">
+    <div class="input-row">
+      <div class="input-wrap">
+        <span class="prompt-char">❯</span>
+        <input id="input" placeholder="メッセージを入力" autocomplete="off">
+      </div>
+      <button class="send" id="send">↑</button>
+    </div>
+    <div class="foot-note">
+      <span>local inference · telemetry off</span>
+      <span>enter ↵ 送信</span>
+    </div>
+  </footer>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const state = { model: null, models: [], busy: false };
+  const POLL_MS = 3000;
+
+  function scrollDown() {
+    requestAnimationFrame(() => { $('main').scrollTop = $('main').scrollHeight; });
+  }
+
+  function addMsg(role, text, meta) {
+    const row = document.createElement('div');
+    row.className = 'msg-row' + (role === 'user' ? ' user' : '');
+    row.innerHTML =
+      '<div class="msg-meta">' + KURO.esc(meta) + '</div>' +
+      '<div class="bubble">' + KURO.esc(text) + '</div>';
+    $('messages').appendChild(row);
+    scrollDown();
+    return row;
+  }
+
+  function addTyping(label) {
+    const row = document.createElement('div');
+    row.className = 'msg-row';
+    row.id = 'typingRow';
+    row.innerHTML =
+      '<div class="msg-meta">' + KURO.esc(label) + ' · 生成中</div>' +
+      '<div class="typing"><span class="tdot"></span><span class="tdot"></span><span class="tdot"></span></div>';
+    $('messages').appendChild(row);
+    scrollDown();
+  }
+
+  function removeTyping() {
+    const el = $('typingRow');
+    if (el) el.remove();
+  }
+
+  function hhmm(iso) {
+    try { return new Date(iso).toTimeString().slice(0, 5); } catch { return '--:--'; }
+  }
+
+  function renderPills() {
+    const box = $('modelPills');
+    box.innerHTML = '';
+    const order = ['qwen-35b', 'gemma-31b', 'gemma-26b'];
+    const items = order
+      .map(n => state.models.find(m => m.name === n))
+      .filter(Boolean)
+      .map(m => ({ name: m.name, label: m.label }));
+    items.push({ name: null, label: '自動選択' });
+    for (const it of items) {
+      const b = document.createElement('button');
+      b.className = 'pill' + (state.model === it.name ? ' active' : '');
+      b.textContent = it.label;
+      b.onclick = () => { state.model = it.name; renderPills(); };
+      box.appendChild(b);
+    }
+  }
+
+  async function loadHistory() {
+    try {
+      const data = await KURO.json('/api/tasks?limit=8');
+      for (const t of data.tasks.filter(t => t.status !== 'running')) {
+        addMsg('user', t.title, 'you · ' + t.time);
+      }
+      // 履歴は llm_output が必要なので個別取得（直近数件のみ）
+      const done = data.tasks.filter(t => t.status !== 'running' && t.id);
+      $('messages').innerHTML = '';
+      for (const t of done) {
+        const d = await KURO.json('/api/tasks/' + t.id);
+        addMsg('user', d.title, 'you · ' + d.time);
+        const meta = d.model + ' · ' + d.time + (d.stubbed ? ' · stub' : '');
+        addMsg('ai', d.llm_output, meta);
+      }
+    } catch (e) { /* 履歴なしは許容 */ }
+  }
+
+  async function pollRun(runId) {
+    for (;;) {
+      await new Promise(r => setTimeout(r, POLL_MS));
+      let run;
+      try { run = await KURO.json('/api/runs/' + runId); }
+      catch { continue; }
+      if (run.status === 'running') continue;
+      removeTyping();
+      if (run.record_id && run.llm_output != null) {
+        const meta = (run.model_name || 'ai') + ' · ' +
+          new Date().toTimeString().slice(0, 5) + (run.stubbed ? ' · stub' : '');
+        addMsg('ai', run.llm_output, meta);
+      } else {
+        addMsg('ai', '実行に失敗しました: ' + (run.error || '不明なエラー'), 'system');
+      }
+      return;
+    }
+  }
+
+  async function send() {
+    const text = $('input').value.trim();
+    if (!text || state.busy) return;
+    state.busy = true;
+    $('send').classList.add('flash');
+    setTimeout(() => $('send').classList.remove('flash'), 220);
+    addMsg('user', text, 'you · ' + new Date().toTimeString().slice(0, 5));
+    $('input').value = '';
+    const label = state.model || '自動選択';
+    addTyping(label);
+    try {
+      const res = await KURO.json('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, model: state.model }),
+      });
+      await pollRun(res.run_id);
+    } catch (e) {
+      removeTyping();
+      addMsg('ai', 'リクエストに失敗しました: ' + e.message, 'system');
+    } finally {
+      state.busy = false;
+    }
+  }
+
+  async function tickHealth() {
+    const h = await KURO.health();
+    KURO.applyHealth(h, $('statusDot'), $('statusLabel'));
+    $('metrics').textContent = h.endpoint_configured
+      ? (h.default_model + ' · local' + (h.llm_up ? '' : ' · unreachable'))
+      : 'llm未設定 · stub';
+  }
+
+  $('send').onclick = send;
+  $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+
+  (async () => {
+    try {
+      const data = await KURO.json('/api/models');
+      state.models = data.models;
+    } catch { state.models = []; }
+    renderPills();
+    tickHealth();
+    setInterval(tickHealth, 5000);
+    await loadHistory();
+  })();
+})();
+</script>
+</body>
+</html>

@@ -84,6 +84,8 @@ class StepResult:
     skipped: bool = False
     skip_reason: str = ""
     duration_s: float = 0.0
+    started_at: str = ""    # 実行開始時刻（ISO、未実行なら空）
+    data: dict = field(default_factory=dict)  # ToolResult.data（構造化結果）
 
     @property
     def label(self) -> str:
@@ -228,13 +230,14 @@ def execute_plan(
             params, {n: results[n - 1].output for n in refs}, previous_output
         )
         logger.info("step %d/%d 開始: %s", i, total, step.label)
+        started_at = datetime.now().isoformat(timespec="seconds")
         t0 = time.monotonic()
         result = _run_single(registry, step, resolved, task_text)
         duration = time.monotonic() - t0
         record = StepResult(
             index=i, tool=step.tool, action=step.action, params=resolved,
             ok=result.ok, stubbed=result.stubbed, output=result.output,
-            duration_s=duration,
+            duration_s=duration, started_at=started_at, data=result.data,
         )
         results.append(record)
         logger.info(

@@ -63,6 +63,25 @@ class MemoryStore:
         logger.info("実行ログを保存しました: %s (id=%s)", path, record.id)
         return path
 
+    def load_by_id(self, record_id: str) -> dict | None:
+        """レコードIDで1件検索する。新しいファイルから遡って探す。"""
+        for path in sorted(self._dir.glob("runs-*.jsonl"), reverse=True):
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                continue
+            for line in reversed(lines):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if record.get("id") == record_id:
+                    return record
+        return None
+
     def load_recent(self, n: int = 3) -> list[dict]:
         """直近のタスク記録を古い順で最大 n 件返す（会話の継続性用）。
 

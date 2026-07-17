@@ -91,6 +91,18 @@ _register(ModelSpec(
 ))
 
 _register(ModelSpec(
+    name="gemma-26b",
+    provider=Provider.LOCAL_MLX,
+    tier=ModelTier.WORKHORSE,
+    served_model_name=os.environ.get(
+        "GEMMA26B_SERVED_NAME", "mlx-community/gemma-4-26b-a4b-it-4bit"
+    ),
+    endpoint_env="LOCAL_LLM_BASE_URL",
+    api_key_env="LOCAL_LLM_API_KEY",
+    description="軽量枠。現在サーバー側は停止中のため、選択すると失敗しstubに落ちる。",
+))
+
+_register(ModelSpec(
     name="llama-70b",
     provider=Provider.LOCAL_MLX,
     tier=ModelTier.QUALITY,

@@ -63,6 +63,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    uvicorn.run("app.server.main:app", host=args.host, port=args.port)
+    return 0
+
+
 def _cmd_models(_args: argparse.Namespace) -> int:
     from app.llm.models import DEFAULT_MODEL, list_models
 
@@ -99,6 +106,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--param", action="append", metavar="KEY=VALUE",
                      help="ツールに渡す追加パラメータ（例: --param repo=owner/name）")
     run.set_defaults(func=_cmd_run)
+
+    serve = sub.add_parser("serve", help="Web UI（kuro·console）を起動する")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=7860)
+    serve.set_defaults(func=_cmd_serve)
 
     models = sub.add_parser("models", help="登録済みモデル一覧を表示する")
     models.set_defaults(func=_cmd_models)
