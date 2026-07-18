@@ -7,8 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="kuro.css?v=20260718d">
-<script src="kuro.js?v=20260718d"></script>
+<link rel="stylesheet" href="kuro.css?v=20260718e">
+<script src="kuro.js?v=20260718e"></script>
 </head>
 <body>
 <div class="app">
@@ -43,6 +43,9 @@
         <div style="padding:16px 18px" class="code-form">
           <div class="code-label">対象ディレクトリ（絶対パス・候補クリックで入力／手打ちも可）</div>
           <div class="tool-chips" id="dirChips"></div>
+          <div><a class="sw-btn" id="ghToggle">▚ GitHubから選ぶ ▾</a>
+            <span class="step-line" id="ghState" style="margin-left:10px"></span></div>
+          <div id="ghList" style="display:none"></div>
           <input class="code-input" id="dir" placeholder="/path/to/project" autocomplete="off">
           <div class="code-label">タスク内容</div>
           <textarea class="code-textarea" id="task" placeholder="例: hello.py の greet 関数に docstring を追加してテストして"></textarea>
@@ -258,6 +261,51 @@
       box.appendChild(chip);
     }
   }
+
+  // GitHubリポジトリ選択: 一覧取得（読み取りのみ）→ 選択でクローン or 既存利用
+  let ghLoaded = false;
+  $('ghToggle').onclick = async () => {
+    const box = $('ghList');
+    if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+    box.style.display = '';
+    if (ghLoaded) return;
+    $('ghState').textContent = '一覧を取得中…';
+    try {
+      const data = await KURO.json('/api/nachtcode/github-repos');
+      $('ghState').textContent = data.stubbed ? 'GITHUB_TOKEN 未設定（stub）' : '';
+      box.innerHTML = '';
+      for (const r of data.repos) {
+        const item = document.createElement('div');
+        item.className = 'conv-item';
+        item.innerHTML =
+          '<div class="conv-title">' + (r.private ? '🔒 ' : '') + KURO.esc(r.full_name) + '</div>' +
+          '<div class="conv-meta"><span>' + KURO.esc(r.updated_at) + ' · ' +
+          KURO.esc((r.description || '').slice(0, 60)) + '</span></div>';
+        item.onclick = async () => {
+          $('ghState').textContent = 'クローン中…（初回は時間がかかります）';
+          try {
+            const res = await KURO.json('/api/nachtcode/clone', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ repo: r.full_name }),
+            });
+            $('dir').value = res.dir;
+            localStorage.setItem('kuro.nachtdir', res.dir);
+            $('ghState').textContent = res.reused
+              ? '既存を使用（再クローンなし）: ' + res.dir
+              : 'クローン完了: ' + res.dir;
+            box.style.display = 'none';
+          } catch (e) {
+            $('ghState').textContent = 'クローン失敗: ' + e.message;
+          }
+        };
+        box.appendChild(item);
+      }
+      ghLoaded = true;
+    } catch (e) {
+      $('ghState').textContent = '一覧の取得に失敗: ' + e.message;
+    }
+  };
 
   $('dir').value = localStorage.getItem('kuro.nachtdir') || '';
   loadDirChips();

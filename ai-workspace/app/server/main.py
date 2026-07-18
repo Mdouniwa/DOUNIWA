@@ -379,14 +379,8 @@ def post_nachtcode(req: NachtCodeRequest) -> dict:
     return {"run_id": entry.run_id, "status": "running", "dir": str(root)}
 
 
-# CODE画面のディレクトリ候補。固定2件のみ（自動探索・スキャンはしない）。
-# 追加したい場合はこのリストに1行足す。UI側は汎用化しない方針。
-_SUGGESTED_DIRS: list[dict] = [
-    {"path": str(Path.home() / "DOUNIWA"),
-     "label": "DOUNIWA（ai-workspace・絵本アプリ）"},
-    {"path": str(Path.home() / "local_mlx_server"),
-     "label": "local_mlx_server"},
-]
+# CODE画面のディレクトリ候補（定義は adapter 側と共有。固定2件のみ）
+from app.tools.nachtcode.adapter import SUGGESTED_DIRS as _SUGGESTED_DIRS  # noqa: E402
 
 
 @app.get("/api/nachtcode/suggest-dirs")
@@ -441,6 +435,43 @@ def post_nachtcode_push(req: PushRequest) -> dict:
         ToolRequest(action="git_push", params=params, task_text="UIからのpush")
     )
     return {"ok": result.ok, "output": result.output, "data": result.data}
+
+
+@app.get("/api/nachtcode/github-repos")
+def get_github_repos() -> dict:
+    """GitHubリポジトリ一覧（読み取りのみ）。{run_id} ルートより先に定義。"""
+    from app.tools.base import ToolRequest
+    from app.tools.nachtcode.adapter import NachtCodeAdapter
+
+    result = NachtCodeAdapter().execute(
+        ToolRequest(action="list_github_repos", params={}, task_text="UI")
+    )
+    if not result.ok:
+        raise HTTPException(status_code=502, detail=result.output)
+    return {"stubbed": result.stubbed,
+            "repos": result.data.get("repos", []),
+            "output": result.output if result.stubbed else ""}
+
+
+class CloneRequest(BaseModel):
+    repo: str  # "owner/name"
+
+
+@app.post("/api/nachtcode/clone")
+def post_nachtcode_clone(req: CloneRequest) -> dict:
+    """リポジトリを ~/nachtcode-repos/ にクローン（既存があれば再利用）。"""
+    from app.tools.base import ToolRequest
+    from app.tools.nachtcode.adapter import NachtCodeAdapter
+
+    result = NachtCodeAdapter().execute(
+        ToolRequest(action="clone_repo", params={"repo": req.repo},
+                    task_text="UIからのクローン")
+    )
+    if not result.ok:
+        raise HTTPException(status_code=502, detail=result.output)
+    return {"ok": True, "stubbed": result.stubbed, "output": result.output,
+            "dir": result.data.get("dir", ""),
+            "reused": result.data.get("reused", "")}
 
 
 @app.get("/api/nachtcode/{run_id}")

@@ -38,11 +38,14 @@ import difflib
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+
+import httpx
 
 from app.tools.base import ToolAdapter, ToolRequest, ToolResult
 
@@ -77,6 +80,31 @@ _BANNED_SUBTREES = [
 
 #: 例外的に許可する一時領域（/tmp・pytest の tmp_path 配下）
 _ALLOWED_TMP = [Path("/private/tmp"), Path("/tmp"), Path("/private/var/folders")]
+
+#: CODE画面のディレクトリ候補。固定2件のみ（自動探索・スキャンはしない）。
+#: clone_repo の「同名ローカル候補があれば再クローンしない」判定にも使う。
+SUGGESTED_DIRS: list[dict] = [
+    {"path": str(Path.home() / "DOUNIWA"),
+     "label": "DOUNIWA（ai-workspace・絵本アプリ）"},
+    {"path": str(Path.home() / "local_mlx_server"),
+     "label": "local_mlx_server"},
+]
+
+_GITHUB_API = "https://api.github.com"
+_CLONE_TIMEOUT_S = 300
+_REPO_NAME_RE = re.compile(r"[A-Za-z0-9._-]+")
+
+
+def repos_root() -> Path:
+    """クローン先の専用フォルダ（既定 ~/nachtcode-repos）。"""
+    return Path(os.environ.get(
+        "NACHTCODE_REPOS_DIR", str(Path.home() / "nachtcode-repos")
+    ))
+
+
+def _github_clone_url(full_name: str, token: str) -> str:
+    """クローン用URL。トークンはクローン後に remote から除去される。"""
+    return f"https://x-access-token:{token}@github.com/{full_name}.git"
 
 
 def _is_within(path: Path, root: Path) -> bool:
@@ -187,6 +215,7 @@ class NachtCodeAdapter(ToolAdapter):
         "read_file", "list_files", "edit_file",
         "create_file", "run_tests", "git_commit",
         "delete_file", "delete_dir", "run_command", "git_push",
+        "list_github_repos", "clone_repo",
     )
     action_docs = {
         "read_file": (
@@ -237,11 +266,27 @@ class NachtCodeAdapter(ToolAdapter):
             "人間が確認した場合のみ実行される。"
             ' params: {"dir": "...", "remote": "省略時origin", "branch": "省略時現在のブランチ"}'
         ),
+        "list_github_repos": (
+            "[Nacht Code] GITHUB_TOKEN で自分のGitHubリポジトリ一覧を取得する"
+            "（読み取りのみ）。params: {}"
+        ),
+        "clone_repo": (
+            "[Nacht Code] GitHubリポジトリを ~/nachtcode-repos/ にクローンする。"
+            "同名のローカル候補やクローン済みがあれば再クローンせずそれを使う。"
+            ' params: {"repo": "owner/name"}'
+        ),
     }
     write_actions = ("edit_file", "create_file", "git_commit",
-                     "delete_file", "delete_dir", "run_command", "git_push")
+                     "delete_file", "delete_dir", "run_command", "git_push",
+                     "clone_repo")
 
     def execute(self, request: ToolRequest) -> ToolResult:
+        # GitHub連携の2actionは対象ディレクトリを取らない
+        # （クローン先は固定の repos_root() に限定される）
+        if request.action == "list_github_repos":
+            return self._list_github_repos(request)
+        if request.action == "clone_repo":
+            return self._clone_repo(request)
         root, error = validate_project_dir(request.params.get("dir", ""))
         if error:
             return ToolResult(ok=False, output=f"[Nacht Code] {error}")
@@ -431,6 +476,122 @@ class NachtCodeAdapter(ToolAdapter):
             ok=True,
             output=f"新規作成しました: {rel}（{len(content)}文字）",
             data={"dir": str(root), "path": rel, "diff": diff[:_MAX_OUTPUT_CHARS]},
+        )
+
+    # ------------------------------------------------------------------
+    # GitHub連携（一覧取得は読み取りのみ・クローン先は repos_root() 固定）
+    # ------------------------------------------------------------------
+
+    def _list_github_repos(self, request: ToolRequest) -> ToolResult:
+        token = os.environ.get("GITHUB_TOKEN")
+        if not token:
+            return ToolResult(
+                ok=True, stubbed=True,
+                output=("[stub:nachtcode] GITHUB_TOKEN が未設定のため stub 応答です。"
+                        " リポジトリ一覧は実際には取得していません。"),
+            )
+        try:
+            resp = httpx.get(
+                f"{_GITHUB_API}/user/repos",
+                params={"per_page": 50, "sort": "updated"},
+                headers={"Authorization": f"Bearer {token}",
+                         "Accept": "application/vnd.github+json"},
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            repos = [
+                {
+                    "name": r.get("name", ""),
+                    "full_name": r.get("full_name", ""),
+                    "description": r.get("description") or "",
+                    "updated_at": (r.get("updated_at") or "")[:10],
+                    "private": bool(r.get("private")),
+                }
+                for r in resp.json()
+            ]
+        except (httpx.HTTPError, ValueError) as exc:
+            return ToolResult(
+                ok=False, output=f"[Nacht Code] リポジトリ一覧の取得に失敗: {exc}"
+            )
+        lines = [f"GitHubリポジトリ（{len(repos)}件）:"]
+        for r in repos:
+            mark = "🔒" if r["private"] else "  "
+            lines.append(f"- {mark}{r['full_name']}（{r['updated_at']}）"
+                         f" {r['description'][:60]}")
+        return ToolResult(ok=True, output="\n".join(lines), data={"repos": repos})
+
+    def _clone_repo(self, request: ToolRequest) -> ToolResult:
+        repo = str(request.params.get("repo") or "").strip()
+        if not repo:
+            return ToolResult(
+                ok=False,
+                output='[Nacht Code] clone_repo には params {"repo": "owner/name"} が必要です',
+            )
+        name = repo.split("/")[-1]
+        if name in (".", "..") or not _REPO_NAME_RE.fullmatch(name):
+            return ToolResult(
+                ok=False, output=f"[Nacht Code] 不正なリポジトリ名です: {repo}"
+            )
+
+        # 1) ローカル候補に同名の git リポジトリがあれば再クローンしない
+        #    （作業中の未コミット変更を失わないため）
+        for candidate in SUGGESTED_DIRS:
+            cand = Path(candidate["path"])
+            if cand.name == name and (cand / ".git").exists():
+                return ToolResult(
+                    ok=True,
+                    output=(f"既存のローカル候補を使用します（再クローンなし）: {cand}"),
+                    data={"dir": str(cand), "reused": "candidate", "repo": repo},
+                )
+
+        # 2) クローン済みなら再クローンしない
+        root = repos_root()
+        dest = root / name
+        if dest.exists():
+            return ToolResult(
+                ok=True,
+                output=f"クローン済みのリポジトリを使用します（再クローンなし）: {dest}",
+                data={"dir": str(dest), "reused": "clone", "repo": repo},
+            )
+
+        # 3) 新規クローン（クローン先は repos_root() 固定）
+        token = os.environ.get("GITHUB_TOKEN")
+        if not token:
+            return ToolResult(
+                ok=True, stubbed=True,
+                output=("[stub:nachtcode] GITHUB_TOKEN が未設定のため stub 応答です。"
+                        f" クローンは実際には実行していません: {repo}"),
+            )
+        full_name = repo if "/" in repo else \
+            f"{os.environ.get('GITHUB_DEFAULT_REPO', '/').split('/')[0]}/{repo}"
+        url = _github_clone_url(full_name, token)
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+            proc = subprocess.run(
+                ["git", "clone", url, str(dest)],
+                capture_output=True, text=True, timeout=_CLONE_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            return ToolResult(
+                ok=False,
+                output=f"[Nacht Code] クローンが{_CLONE_TIMEOUT_S}秒で完了しませんでした",
+            )
+        except OSError as exc:
+            return ToolResult(ok=False, output=f"[Nacht Code] クローン失敗: {exc}")
+        if proc.returncode != 0:
+            detail = (proc.stdout + proc.stderr).replace(token, "***")[:600]
+            return ToolResult(ok=False, output=f"[Nacht Code] クローン失敗: {detail}")
+        # トークンを remote URL に残さない
+        subprocess.run(
+            ["git", "remote", "set-url", "origin",
+             f"https://github.com/{full_name}.git"],
+            cwd=str(dest), capture_output=True, timeout=_GIT_TIMEOUT_S,
+        )
+        _audit("clone_repo", dest, {"repo": full_name})
+        return ToolResult(
+            ok=True,
+            output=f"クローンしました: {full_name} -> {dest}",
+            data={"dir": str(dest), "reused": "", "repo": full_name},
         )
 
     def _delete_file(self, root: Path, request: ToolRequest) -> ToolResult:

@@ -291,6 +291,82 @@ def test_planner_strips_llm_supplied_confirmed(project):
 
 
 # ----------------------------------------------------------------------
+# GitHub連携（一覧・クローン）
+# ----------------------------------------------------------------------
+
+def test_list_github_repos_stub_without_token(monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    result = NachtCodeAdapter().execute(
+        ToolRequest(action="list_github_repos", params={}, task_text="t"))
+    assert result.stubbed is True
+    assert "実際には取得していません" in result.output
+
+
+def test_clone_reuses_local_candidate(tmp_path, monkeypatch):
+    """同名のローカル候補がある場合、再クローンせずそちらを使う。"""
+    import app.tools.nachtcode.adapter as mod
+    cand = tmp_path / "myrepo"
+    cand.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=cand, check=True)
+    monkeypatch.setattr(mod, "SUGGESTED_DIRS",
+                        [{"path": str(cand), "label": "候補"}])
+    monkeypatch.setenv("NACHTCODE_REPOS_DIR", str(tmp_path / "repos"))
+    monkeypatch.setenv("GITHUB_TOKEN", "dummy")
+
+    result = NachtCodeAdapter().execute(ToolRequest(
+        action="clone_repo", params={"repo": "owner/myrepo"}, task_text="t"))
+    assert result.ok is True
+    assert result.data["reused"] == "candidate"
+    assert result.data["dir"] == str(cand)
+    assert not (tmp_path / "repos").exists()  # クローンは走っていない
+
+
+def test_clone_and_reuse_in_repos_dir(tmp_path, monkeypatch):
+    """初回はクローン、2回目は再クローンせず既存を使う。"""
+    import app.tools.nachtcode.adapter as mod
+    # ローカルのbareリポジトリをGitHubの代わりに使う（ネットワーク不要）
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "readme.md").write_text("hello", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=src, check=True)
+    subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=src)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=src)
+    subprocess.run(["git", "add", "-A"], cwd=src, check=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=src, check=True)
+    bare = tmp_path / "src.git"
+    subprocess.run(["git", "clone", "-q", "--bare", str(src), str(bare)], check=True)
+
+    monkeypatch.setattr(mod, "SUGGESTED_DIRS", [])
+    monkeypatch.setattr(mod, "_github_clone_url", lambda full, token: str(bare))
+    monkeypatch.setenv("NACHTCODE_REPOS_DIR", str(tmp_path / "repos"))
+    monkeypatch.setenv("NACHTCODE_AUDIT_DIR", str(tmp_path / "audit"))
+    monkeypatch.setenv("GITHUB_TOKEN", "dummy")
+
+    adapter = NachtCodeAdapter()
+    first = adapter.execute(ToolRequest(
+        action="clone_repo", params={"repo": "owner/proj"}, task_text="t"))
+    assert first.ok is True and first.data["reused"] == ""
+    dest = tmp_path / "repos" / "proj"
+    assert (dest / "readme.md").read_text(encoding="utf-8") == "hello"
+
+    marker = dest / "local_change.txt"
+    marker.write_text("作業中", encoding="utf-8")
+    second = adapter.execute(ToolRequest(
+        action="clone_repo", params={"repo": "owner/proj"}, task_text="t"))
+    assert second.ok is True and second.data["reused"] == "clone"
+    assert marker.exists()  # 再クローンで消えていない
+
+
+def test_clone_rejects_traversal_repo_names(tmp_path, monkeypatch):
+    monkeypatch.setenv("NACHTCODE_REPOS_DIR", str(tmp_path / "repos"))
+    monkeypatch.setenv("GITHUB_TOKEN", "dummy")
+    for bad in ["owner/..", "..", "owner/", "owner/a b"]:
+        result = NachtCodeAdapter().execute(ToolRequest(
+            action="clone_repo", params={"repo": bad}, task_text="t"))
+        assert result.ok is False, f"{bad} が許可されてしまった"
+
+
+# ----------------------------------------------------------------------
 # CLI経路の計画（dir の強制上書き・解釈失敗時の停止）
 # ----------------------------------------------------------------------
 
