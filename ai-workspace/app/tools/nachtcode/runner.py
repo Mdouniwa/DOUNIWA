@@ -30,7 +30,7 @@ from app.orchestrator.planner import (
 )
 from app.tools.base import ToolRequest
 from app.tools.llm_gen.adapter import LLMGenAdapter
-from app.tools.noircode.adapter import NoirCodeAdapter, validate_project_dir
+from app.tools.nachtcode.adapter import NachtCodeAdapter, validate_project_dir
 from app.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -58,16 +58,16 @@ _PROMPT_TEMPLATE = """あなたは "Nacht Code"、対象プロジェクト内の
 
 例1: タスク「hello.py の関数に docstring を追加してテストして」
 {"steps": [
-  {"tool": "noircode", "action": "read_file", "params": {"path": "hello.py"}},
+  {"tool": "nachtcode", "action": "read_file", "params": {"path": "hello.py"}},
   {"tool": "llm", "action": "generate", "params": {"prompt": "次のPythonファイルの各関数に日本語のdocstringを追加した、ファイル全体の完全な内容だけを出力してください。説明文やコードフェンスは書かないでください。\\n{{step1.output}}"}},
-  {"tool": "noircode", "action": "edit_file", "params": {"path": "hello.py", "content": "{{step2.output}}"}},
-  {"tool": "noircode", "action": "run_tests", "params": {}}
+  {"tool": "nachtcode", "action": "edit_file", "params": {"path": "hello.py", "content": "{{step2.output}}"}},
+  {"tool": "nachtcode", "action": "run_tests", "params": {}}
 ]}
 
 例2: 定数変更のような小さな置換は old_string/new_string 方式でよい
 {"steps": [
-  {"tool": "noircode", "action": "edit_file", "params": {"path": "util.py", "old_string": "MAX = 5", "new_string": "MAX = 10"}},
-  {"tool": "noircode", "action": "run_tests", "params": {}}
+  {"tool": "nachtcode", "action": "edit_file", "params": {"path": "util.py", "old_string": "MAX = 5", "new_string": "MAX = 10"}},
+  {"tool": "nachtcode", "action": "run_tests", "params": {}}
 ]}"""
 
 #: 計画生成はコード片の検討で思考が長くなりがちなので、上限を広めに取る
@@ -76,7 +76,7 @@ _PLANNING_MAX_TOKENS = 8192
 
 def _build_registry(client: LLMClient) -> ToolRegistry:
     registry = ToolRegistry()
-    registry.register(NoirCodeAdapter())
+    registry.register(NachtCodeAdapter())
     registry.register(LLMGenAdapter(client))
     return registry
 
@@ -102,7 +102,7 @@ def plan_coding_task(
     解釈失敗時はフォールバックせず PlanRejected を投げる
     （推測でコードを書き換えないため）。
     """
-    listing = NoirCodeAdapter().execute(
+    listing = NachtCodeAdapter().execute(
         ToolRequest(action="list_files", params={"dir": root})
     ).output[:4000]
     from app.orchestrator.planner import max_plan_steps
@@ -134,14 +134,14 @@ def plan_coding_task(
     # LLMが params に別の dir を書いても必ず上書きする（安全ガード）。
     forced = tuple(
         PlanStep(s.tool, s.action, {**s.params, "dir": root})
-        if s.tool == "noircode" else s
+        if s.tool == "nachtcode" else s
         for s in steps
     )
     check_guards(forced, registry)
     return Plan(steps=forced, source="llm")
 
 
-def run_noircode_task(
+def run_nachtcode_task(
     target_dir: str,
     task_text: str,
     assume_yes: bool = False,
@@ -158,7 +158,7 @@ def run_noircode_task(
     print(f"対象DIR   : {root}" + ("（git管理）" if is_git else "（git管理外）"))
     print(f"タスク    : {task_text}")
     print("方針      : 削除・移動・git push・外部コマンドは実装されていません。")
-    print("            変更はすべて監査ログ（NOIRCODE_AUDIT_DIR）に diff で残ります。")
+    print("            変更はすべて監査ログ（NACHTCODE_AUDIT_DIR）に diff で残ります。")
     if not is_git and not assume_yes:
         print("=" * 60)
         print("中断: 対象が git リポジトリではないため、変更の巻き戻し手段がありません。")
@@ -198,7 +198,7 @@ def run_noircode_task(
         for line in text.splitlines()[:40]:
             print(f"    {line}")
     print("=" * 60)
-    audit_dir = os.environ.get("NOIRCODE_AUDIT_DIR", "data/noircode")
+    audit_dir = os.environ.get("NACHTCODE_AUDIT_DIR", "data/nachtcode")
     print(f"結果      : 成功{ok} / 失敗{failed} / スキップ{skipped}")
     print(f"監査ログ  : {audit_dir}/audit-*.jsonl")
     return 0 if failed == 0 else 1

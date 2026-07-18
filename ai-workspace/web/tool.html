@@ -107,7 +107,7 @@
     } else if (step.tool === 'n8n') {
       if (d.status_code) meta += metaRow('レスポンス', 'HTTP ' + d.status_code, 'ok');
       if (d.count != null) meta += metaRow('件数', String(d.count));
-    } else if (step.tool === 'noircode') {
+    } else if (step.tool === 'nachtcode') {
       if (d.dir) meta += metaRow('対象DIR', d.dir, 'path');
       if (d.path) meta += metaRow('FILE', d.path, 'path');
       if (d.commit) meta += metaRow('COMMIT', d.commit, 'ok');
@@ -121,7 +121,7 @@
       panel('CALL META', '', '<div class="meta-grid">' + meta + '</div>');
 
     // Nacht Code の変更差分
-    if (step.tool === 'noircode' && d.diff) {
+    if (step.tool === 'nachtcode' && d.diff) {
       $('content').innerHTML += panel(
         'DIFF', 'unified · ' + new Blob([d.diff]).size + ' B',
         '<pre>' + KURO.esc(d.diff) + '</pre>');

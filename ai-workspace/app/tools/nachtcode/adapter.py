@@ -6,7 +6,7 @@ ai-workspace (kuro·console) と並ぶ2つ目のエージェント。強い権�
 
   1. 自動実行してよい:
      read_file / list_files / edit_file / run_tests（pytest固定）
-  2. 自動実行するが監査ログ（NOIRCODE_AUDIT_DIR、既定 data/noircode）に残す:
+  2. 自動実行するが監査ログ（NACHTCODE_AUDIT_DIR、既定 data/nachtcode）に残す:
      create_file / git_commit（および edit_file の diff も記録する）
   3. 実装しない（actionとして存在させない）:
      git push・ファイル削除/移動（rm/mv）・外部コマンド実行
@@ -109,7 +109,7 @@ def _resolve_inside(root: Path, raw_path: str) -> tuple[Path | None, str]:
 
 def _audit(action: str, root: Path, detail: dict) -> None:
     """権限レベル2の操作（および全変更系）を監査ログへ逐次記録する。"""
-    audit_dir = Path(os.environ.get("NOIRCODE_AUDIT_DIR", "data/noircode"))
+    audit_dir = Path(os.environ.get("NACHTCODE_AUDIT_DIR", "data/nachtcode"))
     try:
         audit_dir.mkdir(parents=True, exist_ok=True)
         entry = {
@@ -163,8 +163,8 @@ def _unified_diff(old: str, new: str, path: str) -> str:
     return "".join(lines)
 
 
-class NoirCodeAdapter(ToolAdapter):
-    name = "noircode"
+class NachtCodeAdapter(ToolAdapter):
+    name = "nachtcode"
     supported_actions = (
         "read_file", "list_files", "edit_file",
         "create_file", "run_tests", "git_commit",

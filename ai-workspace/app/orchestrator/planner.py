@@ -96,11 +96,11 @@ _PROMPT_TEMPLATE = """あなたはユーザーのタスクを実行計画(JSON)�
   {"tool": "obsidian", "action": "save_note", "params": {"title": "まとめ", "body": "{{previous.output}}"}}
 ]}
 
-例4: タスク「/path/to/proj の main.py にコメントを追加して」（noircode はコード本文をJSONに直接書かず、llm.generate の出力を content に渡す）
+例4: タスク「/path/to/proj の main.py にコメントを追加して」（nachtcode はコード本文をJSONに直接書かず、llm.generate の出力を content に渡す）
 {"steps": [
-  {"tool": "noircode", "action": "read_file", "params": {"dir": "/path/to/proj", "path": "main.py"}},
+  {"tool": "nachtcode", "action": "read_file", "params": {"dir": "/path/to/proj", "path": "main.py"}},
   {"tool": "llm", "action": "generate", "params": {"prompt": "次のファイルにコメントを追加した完全な内容だけを出力:\\n{{step1.output}}"}},
-  {"tool": "noircode", "action": "edit_file", "params": {"dir": "/path/to/proj", "path": "main.py", "content": "{{step2.output}}"}}
+  {"tool": "nachtcode", "action": "edit_file", "params": {"dir": "/path/to/proj", "path": "main.py", "content": "{{step2.output}}"}}
 ]}"""
 
 

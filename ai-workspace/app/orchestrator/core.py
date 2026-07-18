@@ -66,7 +66,7 @@ _MAX_STEP_OUTPUT_CHARS = 3000
 # 計画の先頭ツール -> ルーティング用タスク種別（llm は変換ステップなので除外）
 _TOOL_TO_KIND = {
     "github": TaskKind.CODE,
-    "noircode": TaskKind.CODING,
+    "nachtcode": TaskKind.CODING,
     "obsidian": TaskKind.WRITE_NOTE,
     "n8n": TaskKind.AUTOMATION,
     "browser": TaskKind.BROWSER,

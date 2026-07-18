@@ -11,13 +11,13 @@ import pytest
 from app.llm.client import ChatResult
 from app.orchestrator.planner import PlanRejected
 from app.tools.base import ToolRequest
-from app.tools.noircode.adapter import NoirCodeAdapter, validate_project_dir
-from app.tools.noircode.runner import _build_registry, plan_coding_task
+from app.tools.nachtcode.adapter import NachtCodeAdapter, validate_project_dir
+from app.tools.nachtcode.runner import _build_registry, plan_coding_task
 
 
 @pytest.fixture
 def project(tmp_path, monkeypatch):
-    monkeypatch.setenv("NOIRCODE_AUDIT_DIR", str(tmp_path / "audit"))
+    monkeypatch.setenv("NACHTCODE_AUDIT_DIR", str(tmp_path / "audit"))
     root = tmp_path / "proj"
     root.mkdir()
     (root / "hello.py").write_text(
@@ -64,7 +64,7 @@ def test_path_traversal_is_rejected(project, tmp_path):
     outside = tmp_path / "outside.txt"
     outside.write_text("外部ファイル", encoding="utf-8")
     for bad in ["../outside.txt", str(outside), "a/../../outside.txt"]:
-        result = NoirCodeAdapter().execute(
+        result = NachtCodeAdapter().execute(
             _req("edit_file", project, path=bad,
                  old_string="外部", new_string="改ざん")
         )
@@ -77,7 +77,7 @@ def test_symlink_escape_is_rejected(project, tmp_path):
     outside = tmp_path / "secret.txt"
     outside.write_text("secret", encoding="utf-8")
     (project / "link.txt").symlink_to(outside)
-    result = NoirCodeAdapter().execute(
+    result = NachtCodeAdapter().execute(
         _req("edit_file", project, path="link.txt",
              old_string="secret", new_string="pwned")
     )
@@ -87,7 +87,7 @@ def test_symlink_escape_is_rejected(project, tmp_path):
 
 def test_no_dangerous_actions_exist():
     """削除・移動・push・任意コマンドは action として存在しないこと。"""
-    actions = set(NoirCodeAdapter.supported_actions)
+    actions = set(NachtCodeAdapter.supported_actions)
     for banned in ("delete_file", "remove_file", "move_file", "git_push",
                    "run_command", "shell", "install"):
         assert banned not in actions
@@ -98,7 +98,7 @@ def test_no_dangerous_actions_exist():
 # ----------------------------------------------------------------------
 
 def test_read_and_list(project):
-    adapter = NoirCodeAdapter()
+    adapter = NachtCodeAdapter()
     listed = adapter.execute(_req("list_files", project))
     assert listed.ok and "hello.py" in listed.output
 
@@ -107,7 +107,7 @@ def test_read_and_list(project):
 
 
 def test_edit_file_applies_change_and_records_diff(project, tmp_path):
-    result = NoirCodeAdapter().execute(
+    result = NachtCodeAdapter().execute(
         _req("edit_file", project, path="hello.py",
              old_string="def hello():",
              new_string="def hello():\n    \"\"\"あいさつを返す。\"\"\"")
@@ -127,7 +127,7 @@ def test_edit_file_applies_change_and_records_diff(project, tmp_path):
 
 def test_edit_file_requires_unique_old_string(project):
     (project / "dup.py").write_text("x = 1\nx = 1\n", encoding="utf-8")
-    result = NoirCodeAdapter().execute(
+    result = NachtCodeAdapter().execute(
         _req("edit_file", project, path="dup.py",
              old_string="x = 1", new_string="x = 2")
     )
@@ -137,7 +137,7 @@ def test_edit_file_requires_unique_old_string(project):
 
 
 def test_create_file_refuses_overwrite(project):
-    adapter = NoirCodeAdapter()
+    adapter = NachtCodeAdapter()
     created = adapter.execute(
         _req("create_file", project, path="new/util.py", content="VALUE = 1\n")
     )
@@ -152,13 +152,13 @@ def test_create_file_refuses_overwrite(project):
 
 
 def test_run_tests_executes_pytest(project):
-    result = NoirCodeAdapter().execute(_req("run_tests", project))
+    result = NachtCodeAdapter().execute(_req("run_tests", project))
     assert result.ok is True
     assert result.data["exit_code"] == 0
 
 
 def test_git_commit_requires_repo_and_never_pushes(project):
-    adapter = NoirCodeAdapter()
+    adapter = NachtCodeAdapter()
     no_repo = adapter.execute(_req("git_commit", project, message="test"))
     assert no_repo.ok is False
     assert "git リポジトリではない" in no_repo.output
@@ -172,7 +172,7 @@ def test_git_commit_requires_repo_and_never_pushes(project):
 
 
 def test_edit_content_mode_strips_fences_and_wrapper_text(project):
-    adapter = NoirCodeAdapter()
+    adapter = NachtCodeAdapter()
     wrapped = (
         "以下が、docstringを追加した完全なコードです。\n\n"
         "```python\ndef greet(name):\n    \"\"\"あいさつ。\"\"\"\n"
@@ -204,7 +204,7 @@ class _FakeLLM:
 
 def test_plan_forces_human_specified_dir(project):
     # LLMが params に危険な dir を書いても、--dir 指定値で必ず上書きされる
-    content = ('{"steps": [{"tool": "noircode", "action": "read_file",'
+    content = ('{"steps": [{"tool": "nachtcode", "action": "read_file",'
                ' "params": {"dir": "/etc", "path": "hello.py"}}]}')
     client = _FakeLLM(content)
     plan = plan_coding_task(

@@ -36,7 +36,7 @@ _RULES: list[tuple[tuple[str, ...], Classification]] = [
         ("実装して", "リファクタ", "コードを修正", "コードを書いて",
          "コードを直して", "テストを直して", "バグを直して", "コメントを追加",
          "docstring", ".py", "関数に"),
-        Classification(TaskKind.CODING, "noircode", "list_files"),
+        Classification(TaskKind.CODING, "nachtcode", "list_files"),
     ),
     (
         ("github", "リポジトリ", "readme", "プルリク", "pull request", "issue"),
