@@ -7,8 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="kuro.css?v=20260718b">
-<script src="kuro.js?v=20260718b"></script>
+<link rel="stylesheet" href="kuro.css?v=20260718c">
+<script src="kuro.js?v=20260718c"></script>
 </head>
 <body>
 <div class="app">
@@ -41,7 +41,8 @@
         <div class="panel-head"><span>TASK</span>
           <span class="panel-hint">削除・移動・git push・外部コマンドは実装されていません</span></div>
         <div style="padding:16px 18px" class="code-form">
-          <div class="code-label">対象ディレクトリ（絶対パス）</div>
+          <div class="code-label">対象ディレクトリ（絶対パス・候補クリックで入力／手打ちも可）</div>
+          <div class="tool-chips" id="dirChips"></div>
           <input class="code-input" id="dir" placeholder="/path/to/project" autocomplete="off">
           <div class="code-label">タスク内容</div>
           <textarea class="code-textarea" id="task" placeholder="例: hello.py の greet 関数に docstring を追加してテストして"></textarea>
@@ -185,7 +186,28 @@
       : 'llm未設定 · stub';
   }
 
+  // ディレクトリ候補（固定2件・存在＆安全ガード通過分のみサーバーが返す）
+  async function loadDirChips() {
+    let data;
+    try { data = await KURO.json('/api/nachtcode/suggest-dirs'); }
+    catch { return; }
+    const box = $('dirChips');
+    box.innerHTML = '';
+    for (const d of data.dirs) {
+      const chip = document.createElement('a');
+      chip.className = 'tool-chip';
+      chip.innerHTML =
+        '<span class="tool-glyph">▚</span>' +
+        '<span class="tool-name">' + KURO.esc(d.label) + '</span>' +
+        '<span class="tool-action">' + KURO.esc(d.path) + '</span>' +
+        (d.git ? '<span class="badge done">git</span>' : '<span class="badge">no-git</span>');
+      chip.onclick = () => { $('dir').value = d.path; };
+      box.appendChild(chip);
+    }
+  }
+
   $('dir').value = localStorage.getItem('kuro.nachtdir') || '';
+  loadDirChips();
   tickHealth();
   setInterval(tickHealth, 5000);
 })();

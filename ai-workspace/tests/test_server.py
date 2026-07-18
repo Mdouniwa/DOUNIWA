@@ -194,6 +194,27 @@ def test_nachtcode_run_stops_honestly_when_llm_stubbed(client, tmp_path):
     assert (proj / "a.py").read_text(encoding="utf-8") == "x = 1\n"  # 無傷
 
 
+def test_suggest_dirs_filters_missing_and_dangerous(client, tmp_path, monkeypatch):
+    import app.server.main as server_main
+    ok_dir = tmp_path / "proj"
+    ok_dir.mkdir()
+    monkeypatch.setattr(server_main, "_SUGGESTED_DIRS", [
+        {"path": str(ok_dir), "label": "存在する候補"},
+        {"path": str(tmp_path / "missing"), "label": "存在しない候補"},
+        {"path": "/etc", "label": "危険な候補"},
+    ])
+    dirs = client.get("/api/nachtcode/suggest-dirs").json()["dirs"]
+    assert [d["label"] for d in dirs] == ["存在する候補"]  # 他2件は除外
+    assert dirs[0]["git"] is False
+
+
+def test_suggest_dirs_route_not_swallowed_by_run_id(client):
+    # /api/nachtcode/{run_id} より先に定義されていることの回帰テスト
+    res = client.get("/api/nachtcode/suggest-dirs")
+    assert res.status_code == 200
+    assert "dirs" in res.json()
+
+
 def test_chat_without_session_id_issues_new_one(client):
     res = client.post("/api/chat", json={"message": "こんにちは"}).json()
     assert res["session_id"]

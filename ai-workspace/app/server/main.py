@@ -379,6 +379,39 @@ def post_nachtcode(req: NachtCodeRequest) -> dict:
     return {"run_id": entry.run_id, "status": "running", "dir": str(root)}
 
 
+# CODE画面のディレクトリ候補。固定2件のみ（自動探索・スキャンはしない）。
+# 追加したい場合はこのリストに1行足す。UI側は汎用化しない方針。
+_SUGGESTED_DIRS: list[dict] = [
+    {"path": str(Path.home() / "DOUNIWA"),
+     "label": "DOUNIWA（ai-workspace・絵本アプリ）"},
+    {"path": str(Path.home() / "local_mlx_server"),
+     "label": "local_mlx_server"},
+]
+
+
+@app.get("/api/nachtcode/suggest-dirs")
+def get_suggest_dirs() -> dict:
+    """候補ディレクトリを返す。存在確認と安全ガードを通過したものだけ。
+
+    注意: このルートは /api/nachtcode/{run_id} より先に定義すること
+    （後だと "suggest-dirs" が run_id として解釈される）。
+    """
+    dirs = []
+    for candidate in _SUGGESTED_DIRS:
+        resolved, error = validate_project_dir(candidate["path"])
+        if error:
+            logger.info(
+                "候補ディレクトリを除外: %s（%s）", candidate["path"], error
+            )
+            continue
+        dirs.append({
+            "path": str(resolved),
+            "label": candidate["label"],
+            "git": (resolved / ".git").exists(),
+        })
+    return {"dirs": dirs}
+
+
 @app.get("/api/nachtcode/{run_id}")
 def get_nachtcode_run(run_id: str) -> dict:
     with _code_runs_lock:
