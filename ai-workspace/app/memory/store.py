@@ -173,6 +173,46 @@ class MemoryStore:
             if (r.get("session_id") or "") == session_id
         ]
 
+    def delete_task(self, record_id: str) -> int:
+        """指定したIDのレコード1件だけを削除し、削除件数を返す。
+
+        delete_session() と同じく、追記のみ原則の例外（ユーザーの明示操作専用）。
+        record_id が空なら何もしない。対象行以外（壊れた行を含む）は
+        そのまま書き戻す。一括削除・条件削除は実装しない。
+        """
+        if not record_id:
+            return 0
+        deleted = 0
+        for path in sorted(self._dir.glob("runs-*.jsonl")):
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                continue
+            kept: list[str] = []
+            removed_here = 0
+            for line in lines:
+                stripped = line.strip()
+                if stripped:
+                    try:
+                        record = json.loads(stripped)
+                    except json.JSONDecodeError:
+                        kept.append(line)  # 壊れた行も消さない
+                        continue
+                    if record.get("id") == record_id:
+                        removed_here += 1
+                        continue
+                kept.append(line)
+            if removed_here:
+                content = "\n".join(kept)
+                if content:
+                    content += "\n"
+                path.write_text(content, encoding="utf-8")
+                deleted += removed_here
+                logger.info(
+                    "タスク %s のレコードを %s から削除しました", record_id, path
+                )
+        return deleted
+
     def delete_session(self, session_id: str) -> int:
         """指定した会話のレコードだけを削除し、削除件数を返す。
 

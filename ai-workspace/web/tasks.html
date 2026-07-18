@@ -7,8 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="kuro.css?v=20260718">
-<script src="kuro.js?v=20260718"></script>
+<link rel="stylesheet" href="kuro.css?v=20260718b">
+<script src="kuro.js?v=20260718b"></script>
 </head>
 <body>
 <div class="app">
@@ -60,6 +60,13 @@
   const $ = (id) => document.getElementById(id);
   const openSet = new Set();
   const POLL_MS = 3000;
+  let armedDelId = null;   // 削除2段階目待ちのタスクID
+  let armedDelTimer = null;
+
+  function disarmDelete() {
+    armedDelId = null;
+    clearTimeout(armedDelTimer);
+  }
 
   function toolChip(taskId, tool) {
     const badge = KURO.badge(tool.state);
@@ -95,6 +102,12 @@
     html += '<span class="t-time">' + KURO.esc(timeText) + '</span>';
     html += '<span class="t-status ' + t.status + '">' + KURO.esc(statusText) + '</span>';
     if (t.stubbed) html += '<span class="t-status">stub</span>';
+    // 削除は完了/失敗タスクのみ（実行中はサーバー側でも409で拒否される）
+    if (t.id && !running) {
+      const armed = armedDelId === t.id;
+      html += '<span class="conv-del' + (armed ? ' armed' : '') + '" data-del="' +
+        KURO.esc(t.id) + '">' + (armed ? '本当に削除?' : '削除') + '</span>';
+    }
     html += '</div></div>';
     html += '<span class="chip-model">' + KURO.esc(t.model_label || t.model) + '</span>';
     html += '<span class="tag">' + KURO.esc(t.tag) + '</span>';
@@ -137,6 +150,33 @@
         const key = el.parentElement.dataset.key;
         openSet.has(key) ? openSet.delete(key) : openSet.add(key);
         el.parentElement.classList.toggle('open');
+      };
+    }
+    // 個別削除（2段階確認: 1回目で警告、3秒以内の2回目で実行）
+    for (const el of document.querySelectorAll('.conv-del[data-del]')) {
+      el.onclick = async (e) => {
+        e.stopPropagation();
+        const id = el.dataset.del;
+        if (armedDelId !== id) {
+          disarmDelete();
+          armedDelId = id;
+          armedDelTimer = setTimeout(() => { disarmDelete(); refresh(); }, 3000);
+          refresh();
+          return;
+        }
+        disarmDelete();
+        try {
+          const res = await fetch('/api/tasks/' + encodeURIComponent(id),
+                                  { method: 'DELETE' });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            $('footRight').textContent =
+              '削除できません: ' + (data.detail || 'HTTP ' + res.status);
+          }
+        } catch (err) {
+          $('footRight').textContent = '削除に失敗しました: ' + err.message;
+        }
+        refresh();
       };
     }
     $('footRight').textContent =

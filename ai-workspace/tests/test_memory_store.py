@@ -68,6 +68,22 @@ def test_delete_session_refuses_empty_id(tmp_path):
     assert len(store.load_recent(5)) == 1
 
 
+def test_delete_task_removes_only_target(tmp_path):
+    store = MemoryStore(base_dir=tmp_path)
+    _seed(store, "レガシー1")
+    _seed(store, "A1", session_id="sess-a")
+    _seed(store, "B1", session_id="sess-b")
+    records = store.load_recent(10, any_session=True)
+    target = next(r for r in records if r["task_text"] == "A1")
+
+    assert store.delete_task(target["id"]) == 1
+    remaining = store.load_recent(10, any_session=True)
+    assert [r["task_text"] for r in remaining] == ["レガシー1", "B1"]
+    assert store.load_session("sess-b")          # 他セッションは無傷
+    assert store.delete_task(target["id"]) == 0  # 2回目は対象なし
+    assert store.delete_task("") == 0            # 空IDは安全弁で拒否
+
+
 def test_load_session_returns_records_in_order(tmp_path):
     store = MemoryStore(base_dir=tmp_path)
     _seed(store, "A1", session_id="sess-a")

@@ -443,6 +443,29 @@ def delete_session(session_id: str) -> dict:
     return {"session_id": session_id, "deleted": deleted}
 
 
+@app.delete("/api/tasks/{record_id}")
+def delete_task(record_id: str) -> dict:
+    """タスク1件を削除する（一括削除・条件削除は提供しない）。"""
+    with _runs_lock:
+        active = any(
+            e.record_id == record_id and e.status == "running"
+            for e in _runs.values()
+        )
+    with _code_runs_lock:
+        active = active or any(
+            e.record_id == record_id and e.status == "running"
+            for e in _code_runs.values()
+        )
+    if active:
+        raise HTTPException(
+            status_code=409, detail="実行中のタスクは削除できません"
+        )
+    deleted = _store.delete_task(record_id)
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="タスクが見つかりません")
+    return {"id": record_id, "deleted": deleted}
+
+
 @app.get("/api/models")
 def get_models() -> dict:
     models = []

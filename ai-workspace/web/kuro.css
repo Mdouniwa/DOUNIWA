@@ -148,6 +148,8 @@ nav.tabs {
   border-color: rgba(212,167,45,0.5); background: rgba(212,167,45,0.06);
 }
 .conv-empty { font-family: var(--mono); font-size: 10px; color: #3c3c3c; letter-spacing: 0.08em; padding: 10px 6px; }
+.card-head .conv-del { visibility: hidden; }
+.card-head:hover .conv-del { visibility: visible; }
 
 /* ---- main ------------------------------------------------------------ */
 main.scroll { flex: 1; overflow-y: auto; position: relative; z-index: 1; }

@@ -112,6 +112,46 @@ def test_sessions_isolated_and_deletable(client):
     assert client.get("/api/sessions/sess-a").json()["messages"]
 
 
+def test_delete_task_removes_single_record(client):
+    r1 = client.post("/api/chat", json={"message": "削除対象タスク"}).json()
+    _wait_done(client, r1["run_id"])
+    r2 = client.post("/api/chat", json={"message": "残すタスク"}).json()
+    _wait_done(client, r2["run_id"])
+
+    before = client.get("/api/tasks").json()["tasks"]
+    target = next(t for t in before if t["title"] == "削除対象タスク")
+
+    res = client.delete(f"/api/tasks/{target['id']}")
+    assert res.status_code == 200
+    assert res.json()["deleted"] == 1
+
+    after = client.get("/api/tasks").json()["tasks"]
+    assert len(after) == len(before) - 1
+    assert all(t["id"] != target["id"] for t in after)
+    assert any(t["title"] == "残すタスク" for t in after)  # 他は無傷
+
+    assert client.delete(f"/api/tasks/{target['id']}").status_code == 404
+
+
+def test_delete_task_rejects_running(client):
+    import app.server.main as server_main
+    from datetime import datetime
+    entry = server_main.RunEntry(
+        run_id="fake-run", task_text="実行中タスク", model=None,
+        started_at=datetime.now().isoformat(timespec="seconds"),
+        record_id="running-rec-01", status="running",
+    )
+    with server_main._runs_lock:
+        server_main._runs[entry.run_id] = entry
+    try:
+        res = client.delete("/api/tasks/running-rec-01")
+        assert res.status_code == 409
+        assert "実行中" in res.json()["detail"]
+    finally:
+        with server_main._runs_lock:
+            server_main._runs.pop("fake-run", None)
+
+
 def test_nachtcode_rejects_dangerous_and_missing_dirs(client):
     res = client.post("/api/nachtcode", json={"dir": "/etc", "task": "編集して"})
     assert res.status_code == 400
