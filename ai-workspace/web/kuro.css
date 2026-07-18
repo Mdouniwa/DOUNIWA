@@ -38,7 +38,10 @@ header.bar {
   flex-shrink: 0; position: relative; z-index: 1;
   border-bottom: 1px solid #1b1b1b; box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
 }
-.logo { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.logo { display: flex; align-items: center; gap: 10px; flex-shrink: 0; text-decoration: none; }
+a.logo:hover { text-decoration: none; }
+a.logo:hover .logo-text { color: #c8c8c8; }
+a.logo:hover .logo-box { border-color: #3a3a3a; color: #b0b0b0; }
 .logo-box {
   width: 24px; height: 24px; border: 1px solid #2b2b2b; border-radius: 5px;
   display: flex; align-items: center; justify-content: center;
@@ -270,6 +273,30 @@ pre.log {
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
 }
 .empty { font-family: var(--mono); font-size: 11px; color: #3c3c3c; padding: 24px 0; text-align: center; letter-spacing: 0.08em; }
+
+/* ---- code (Nacht Code) ------------------------------------------------ */
+.code-form { display: flex; flex-direction: column; gap: 10px; }
+.code-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em; color: #424242; }
+.code-input, .code-textarea {
+  width: 100%; padding: 10px 14px; background: #0d0d0d; border: 1px solid #212121;
+  border-radius: 6px; color: #e2e2e2; font-family: var(--mono); font-size: 12.5px;
+  outline: none; box-shadow: inset 0 1px 3px rgba(0,0,0,0.55);
+  transition: border-color 160ms var(--ease);
+}
+.code-input:focus, .code-textarea:focus { border-color: #383838; }
+.code-textarea { min-height: 88px; resize: vertical; line-height: 1.7; font-family: var(--sans); font-size: 13px; }
+.check-row { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 10.5px; color: #6a6a6a; }
+.check-row input { accent-color: var(--accent); }
+.code-actions { display: flex; align-items: center; gap: 14px; }
+.error-box {
+  border: 1px solid rgba(212,167,45,0.45); color: var(--warn);
+  background: rgba(212,167,45,0.05); padding: 10px 14px; border-radius: 6px;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.7; word-break: break-all;
+}
+.step-line { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.04em; color: #9a9a9a; padding: 2px 0; }
+.step-line .ok { color: var(--accent); }
+.step-line .ng { color: var(--warn); }
+.step-line .skip { color: #525252; }
 
 /* ---- tool detail ------------------------------------------------------ */
 .crumb-bar { flex-shrink: 0; position: relative; z-index: 1; border-bottom: 1px solid #161616; background: rgba(12,12,12,0.6); }

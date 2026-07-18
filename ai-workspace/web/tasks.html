@@ -7,21 +7,22 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="kuro.css">
-<script src="kuro.js"></script>
+<link rel="stylesheet" href="kuro.css?v=20260718">
+<script src="kuro.js?v=20260718"></script>
 </head>
 <body>
 <div class="app">
   <div class="noise"></div>
   <header class="bar">
-    <div class="logo">
+    <a class="logo" href="index.html">
       <div class="logo-box">❯</div>
       <div class="logo-text">kuro<span>·console</span></div>
       <div class="ver">v0.5.0</div>
-    </div>
+    </a>
     <nav class="tabs">
       <a class="tab" href="index.html">CHAT</a>
       <span class="tab active">TASKS</span>
+      <a class="tab" href="code.html">CODE</a>
     </nav>
     <div class="head-right">
       <div class="status">
@@ -40,8 +41,15 @@
       <div class="task-list" id="list"><div class="empty">loading…</div></div>
     </div>
   </main>
-  <footer class="bar slim">
-    <div class="foot-note wide">
+  <footer class="bar">
+    <div class="input-row" style="max-width:860px">
+      <div class="input-wrap">
+        <span class="prompt-char">❯</span>
+        <input id="newTask" placeholder="新規タスクを入力（モデル自動選択・新しい会話として実行）" autocomplete="off">
+      </div>
+      <button class="send" id="submitTask">↑</button>
+    </div>
+    <div class="foot-note wide" style="margin-top:9px">
       <span>orchestrator · local · telemetry off</span>
       <span id="footRight"></span>
     </div>
@@ -142,6 +150,34 @@
       ? (h.default_model + ' · local' + (h.llm_up ? '' : ' · unreachable'))
       : 'llm未設定 · stub';
   }
+
+  // 新規タスク投入（新しい会話として実行し、一覧のポーリングで進捗が見える）
+  async function submitTask() {
+    const input = $('newTask');
+    const text = input.value.trim();
+    if (!text) return;
+    try {
+      await KURO.json('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, model: null, session_id: null }),
+      });
+      input.value = '';
+      refresh();
+    } catch (e) {
+      input.value = text;  // 失敗時は入力を保持
+      $('footRight').textContent = '送信に失敗しました: ' + e.message;
+    }
+  }
+  $('submitTask').onclick = submitTask;
+  let composingTask = false;
+  $('newTask').addEventListener('compositionstart', () => { composingTask = true; });
+  $('newTask').addEventListener('compositionend', () => { composingTask = false; });
+  $('newTask').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    if (e.isComposing || e.keyCode === 229 || composingTask) return;
+    submitTask();
+  });
 
   refresh();
   tickHealth();

@@ -31,9 +31,16 @@ from pydantic import BaseModel
 
 load_dotenv()  # uvicorn 直起動でも .env を読む
 
+from dataclasses import asdict  # noqa: E402
+
+from app.llm.client import LLMClient  # noqa: E402
 from app.llm.models import DEFAULT_MODEL, get_model, list_models  # noqa: E402
-from app.memory.store import MemoryStore  # noqa: E402
+from app.memory.store import MemoryStore, TaskRecord  # noqa: E402
 from app.orchestrator.core import Orchestrator  # noqa: E402
+from app.orchestrator.executor import execute_plan  # noqa: E402
+from app.orchestrator.planner import PlanRejected  # noqa: E402
+from app.tools.nachtcode.adapter import validate_project_dir  # noqa: E402
+from app.tools.nachtcode.runner import _build_registry, plan_coding_task  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +263,145 @@ def get_task(record_id: str) -> dict:
     summary["plan"] = record.get("plan", [])
     summary["steps"] = record.get("step_results", [])
     return summary
+
+
+@dataclass
+class CodeRunEntry:
+    """Nacht Code（CODE画面）の実行中/完了タスク。"""
+
+    run_id: str
+    target_dir: str
+    task_text: str
+    started_at: str
+    status: str = "running"          # running | done | failed
+    error: str = ""
+    record_id: str | None = None
+    lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+
+class NachtCodeRequest(BaseModel):
+    dir: str
+    task: str
+    force: bool = False   # git管理外ディレクトリでも実行（バックアップ確認済みの明示）
+    model: str | None = None
+
+
+_code_runs: dict[str, CodeRunEntry] = {}
+_code_runs_lock = threading.Lock()
+_code_client = LLMClient()
+
+
+def _execute_code_run(entry: CodeRunEntry, model: str | None) -> None:
+    registry = _build_registry(_code_client)
+    plan = None
+    results = []
+    error = ""
+    try:
+        plan = plan_coding_task(
+            _code_client, registry, entry.target_dir, entry.task_text, model
+        )
+        results = execute_plan(plan, registry, entry.task_text)
+    except PlanRejected as exc:
+        error = str(exc)
+    except Exception as exc:  # 実行スレッドを静かに死なせない
+        logger.exception("nachtcode run %s failed", entry.run_id)
+        error = f"予期しないエラー: {exc}"
+
+    executed = [r for r in results if not r.skipped]
+    ok = bool(executed) and all(r.ok for r in executed) \
+        and not any(r.skipped for r in results)
+    if error:
+        summary = f"Nacht Code: 実行しませんでした。{error}"
+    else:
+        summary = (
+            f"Nacht Code 実行結果: 成功{sum(1 for r in executed if r.ok)}"
+            f" / 失敗{sum(1 for r in executed if not r.ok)}"
+            f" / スキップ{sum(1 for r in results if r.skipped)}"
+            f"（対象: {entry.target_dir}）"
+        )
+    record = TaskRecord(
+        task_text=entry.task_text,
+        session_id="",
+        task_kind="coding",
+        model_name=model or DEFAULT_MODEL,
+        route_reason="Nacht Code（CODE画面）",
+        tool_name="nachtcode",
+        tool_action=plan.steps[0].action if plan and plan.steps else None,
+        tool_ok=None if error else ok,
+        tool_output=executed[-1].output if executed else "",
+        llm_output=summary,
+        stubbed=any(r.stubbed for r in results),
+        plan_source="llm" if plan else "rejected",
+        plan_note=error,
+        plan=[{"tool": s.tool, "action": s.action, "params": s.params}
+              for s in (plan.steps if plan else [])],
+        step_results=[asdict(r) for r in results],
+    )
+    _store.save(record)
+    with entry.lock:
+        entry.record_id = record.id
+        entry.status = "failed" if (error or not ok) else "done"
+        entry.error = error
+
+
+@app.post("/api/nachtcode")
+def post_nachtcode(req: NachtCodeRequest) -> dict:
+    task = req.task.strip()
+    if not task:
+        raise HTTPException(status_code=400, detail="タスクが空です")
+    root, error = validate_project_dir(req.dir)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    if not (root / ".git").exists() and not req.force:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "対象が git リポジトリではないため、変更の巻き戻し手段がありません。"
+                "バックアップを確認のうえ「git管理外でも実行」を有効にしてください。"
+            ),
+        )
+    if req.model:
+        try:
+            get_model(req.model)
+        except KeyError:
+            raise HTTPException(status_code=400, detail=f"未知のモデル: {req.model}")
+    entry = CodeRunEntry(
+        run_id=uuid.uuid4().hex[:12],
+        target_dir=str(root),
+        task_text=task,
+        started_at=datetime.now().isoformat(timespec="seconds"),
+    )
+    with _code_runs_lock:
+        _code_runs[entry.run_id] = entry
+    threading.Thread(
+        target=_execute_code_run, args=(entry, req.model), daemon=True
+    ).start()
+    return {"run_id": entry.run_id, "status": "running", "dir": str(root)}
+
+
+@app.get("/api/nachtcode/{run_id}")
+def get_nachtcode_run(run_id: str) -> dict:
+    with _code_runs_lock:
+        entry = _code_runs.get(run_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="run が見つかりません")
+    with entry.lock:
+        result = {
+            "run_id": entry.run_id,
+            "status": entry.status,
+            "error": entry.error,
+            "dir": entry.target_dir,
+            "task_text": entry.task_text,
+            "started_at": entry.started_at,
+            "record_id": entry.record_id,
+        }
+    if result["record_id"]:
+        record = _store.load_by_id(result["record_id"])
+        if record:
+            result["summary"] = record.get("llm_output", "")
+            result["plan"] = record.get("plan", [])
+            result["steps"] = record.get("step_results", [])
+    return result
 
 
 @app.get("/api/sessions")

@@ -112,6 +112,48 @@ def test_sessions_isolated_and_deletable(client):
     assert client.get("/api/sessions/sess-a").json()["messages"]
 
 
+def test_nachtcode_rejects_dangerous_and_missing_dirs(client):
+    res = client.post("/api/nachtcode", json={"dir": "/etc", "task": "編集して"})
+    assert res.status_code == 400
+    assert "安全ガード" in res.json()["detail"]
+
+    res = client.post("/api/nachtcode",
+                      json={"dir": "/no/such/dir", "task": "編集して"})
+    assert res.status_code == 400
+    assert "存在しません" in res.json()["detail"]
+
+
+def test_nachtcode_requires_force_for_non_git_dir(client, tmp_path):
+    proj = tmp_path / "plain"
+    proj.mkdir()
+    res = client.post("/api/nachtcode", json={"dir": str(proj), "task": "何かして"})
+    assert res.status_code == 400
+    assert "git リポジトリではない" in res.json()["detail"]
+
+
+def test_nachtcode_run_stops_honestly_when_llm_stubbed(client, tmp_path):
+    import subprocess
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "a.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=proj, check=True)
+
+    res = client.post("/api/nachtcode", json={"dir": str(proj), "task": "xを2にして"})
+    assert res.status_code == 200
+    run_id = res.json()["run_id"]
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        run = client.get(f"/api/nachtcode/{run_id}").json()
+        if run["status"] != "running":
+            break
+        time.sleep(0.1)
+    assert run["status"] == "failed"          # LLM未接続 → 正直に失敗
+    assert "stub" in run["error"]
+    assert run["record_id"]                    # 記録は残る
+    assert run["steps"] == []                  # 何も実行していない
+    assert (proj / "a.py").read_text(encoding="utf-8") == "x = 1\n"  # 無傷
+
+
 def test_chat_without_session_id_issues_new_one(client):
     res = client.post("/api/chat", json={"message": "こんにちは"}).json()
     assert res["session_id"]
