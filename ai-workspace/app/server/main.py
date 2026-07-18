@@ -412,6 +412,37 @@ def get_suggest_dirs() -> dict:
     return {"dirs": dirs}
 
 
+class PushRequest(BaseModel):
+    dir: str
+    remote: str = "origin"
+    branch: str | None = None
+    confirm: bool = False  # UIの確認ダイアログを通過した場合のみ True
+
+
+@app.post("/api/nachtcode/push")
+def post_nachtcode_push(req: PushRequest) -> dict:
+    """git push。confirm=False ならプレビューのみ、True なら実行する。
+
+    confirm=True は UI の確認ダイアログ（人間の明示操作）だけが送る。
+    無人の自動 push は行わない。
+    """
+    from app.tools.base import ToolRequest
+    from app.tools.nachtcode.adapter import NachtCodeAdapter
+
+    root, error = validate_project_dir(req.dir)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    params = {"dir": str(root), "remote": req.remote}
+    if req.branch:
+        params["branch"] = req.branch
+    if req.confirm:
+        params["confirmed"] = True
+    result = NachtCodeAdapter().execute(
+        ToolRequest(action="git_push", params=params, task_text="UIからのpush")
+    )
+    return {"ok": result.ok, "output": result.output, "data": result.data}
+
+
 @app.get("/api/nachtcode/{run_id}")
 def get_nachtcode_run(run_id: str) -> dict:
     with _code_runs_lock:

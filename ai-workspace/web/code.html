@@ -7,8 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="kuro.css?v=20260718c">
-<script src="kuro.js?v=20260718c"></script>
+<link rel="stylesheet" href="kuro.css?v=20260718d">
+<script src="kuro.js?v=20260718d"></script>
 </head>
 <body>
 <div class="app">
@@ -39,7 +39,7 @@
       </div>
       <div class="panel">
         <div class="panel-head"><span>TASK</span>
-          <span class="panel-hint">削除・移動・git push・外部コマンドは実装されていません</span></div>
+          <span class="panel-hint">Claude Code相当の運用 · 変更は監査ログ記録 · push は確認後のみ</span></div>
         <div style="padding:16px 18px" class="code-form">
           <div class="code-label">対象ディレクトリ（絶対パス・候補クリックで入力／手打ちも可）</div>
           <div class="tool-chips" id="dirChips"></div>
@@ -113,6 +113,25 @@
     body += '</div>';
     html += panel('RESULT', run.dir || '', body);
 
+    // git push の確認ダイアログ（needs_confirmation が返っている場合のみ）。
+    // 確認なしの自動 push は行わない。2段階クリックで実行する。
+    for (const s of (run.steps || [])) {
+      const d0 = s.data || {};
+      if (!d0.needs_confirmation) continue;
+      html += '<div class="panel" style="margin-top:14px;border-color:rgba(212,167,45,0.4)">' +
+        '<div class="panel-head"><span>GIT PUSH の確認</span>' +
+        '<span class="panel-hint">まだ実行されていません</span></div>' +
+        '<div style="padding:14px 18px">' +
+        '<div class="step-line">remote: ' + KURO.esc(d0.remote + '（' + (d0.url || '') + '）') + '</div>' +
+        '<div class="step-line">branch: ' + KURO.esc(d0.branch || '') + '</div>' +
+        '<pre style="margin-top:8px">' + KURO.esc(d0.commits || '（なし）') + '</pre>' +
+        '<div style="margin-top:10px"><a class="action-btn" id="pushBtn" data-remote="' +
+        KURO.esc(d0.remote) + '" data-branch="' + KURO.esc(d0.branch) + '" data-dir="' +
+        KURO.esc(d0.dir) + '">push を実行する</a>' +
+        '<span class="step-line" id="pushState" style="margin-left:12px"></span></div>' +
+        '</div></div>';
+    }
+
     // 各ステップ
     for (const s of (run.steps || [])) {
       const st = stepState(s);
@@ -131,6 +150,40 @@
                     d.path || '', inner);
     }
     $('result').innerHTML = html;
+
+    // push確認ボタン: 2段階クリック（1回目で警告、3秒以内の2回目で実行）
+    const pushBtn = $('pushBtn');
+    if (pushBtn) {
+      let armed = false, timer = null;
+      pushBtn.onclick = async () => {
+        if (!armed) {
+          armed = true;
+          pushBtn.textContent = '本当に push しますか?（もう一度クリック）';
+          timer = setTimeout(() => {
+            armed = false;
+            pushBtn.textContent = 'push を実行する';
+          }, 3000);
+          return;
+        }
+        clearTimeout(timer);
+        armed = false;
+        $('pushState').textContent = 'push 中…';
+        try {
+          const res = await KURO.json('/api/nachtcode/push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dir: pushBtn.dataset.dir, remote: pushBtn.dataset.remote,
+              branch: pushBtn.dataset.branch, confirm: true,
+            }),
+          });
+          $('pushState').textContent = res.ok ? '完了: ' + res.output : '失敗: ' + res.output;
+          pushBtn.style.display = 'none';
+        } catch (e) {
+          $('pushState').textContent = 'push に失敗しました: ' + e.message;
+        }
+      };
+    }
   }
 
   async function poll(runId) {

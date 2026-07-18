@@ -174,6 +174,11 @@ def _parse_steps(obj: dict, registry: ToolRegistry) -> tuple[PlanStep, ...] | No
         if adapter.supported_actions and action not in adapter.supported_actions:
             logger.warning("計画に未知の action '%s.%s' が含まれています", tool, action)
             return None
+        if tool == "nachtcode" and action == "git_push":
+            # push の確認は人間のチャネル（CLIのy/n・UIダイアログ）専用。
+            # LLMが計画に confirmed を書いても必ず除去し、無人pushを防ぐ。
+            params = {k: v for k, v in params.items()
+                      if k not in ("confirmed", "confirm")}
         steps.append(PlanStep(tool=tool, action=action, params=params))
     return tuple(steps)
 

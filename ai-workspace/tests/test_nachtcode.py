@@ -85,12 +85,13 @@ def test_symlink_escape_is_rejected(project, tmp_path):
     assert outside.read_text(encoding="utf-8") == "secret"
 
 
-def test_no_dangerous_actions_exist():
-    """削除・移動・push・任意コマンドは action として存在しないこと。"""
+def test_claude_code_equivalent_actions_exist():
+    """2026-07-18 方針変更: 削除・push・外部コマンドが action として存在する。"""
     actions = set(NachtCodeAdapter.supported_actions)
-    for banned in ("delete_file", "remove_file", "move_file", "git_push",
-                   "run_command", "shell", "install"):
-        assert banned not in actions
+    assert {"delete_file", "delete_dir", "run_command", "git_push"} <= actions
+    # 変更系はすべて write_actions（監査対象）に含まれる
+    assert {"delete_file", "delete_dir", "run_command", "git_push"} \
+        <= set(NachtCodeAdapter.write_actions)
 
 
 # ----------------------------------------------------------------------
@@ -168,7 +169,7 @@ def test_git_commit_requires_repo_and_never_pushes(project):
     subprocess.run(["git", "config", "user.name", "t"], cwd=project)
     committed = adapter.execute(_req("git_commit", project, message="初回"))
     assert committed.ok is True
-    assert "push はしません" in committed.output
+    assert "コミットしました" in committed.output
 
 
 def test_edit_content_mode_strips_fences_and_wrapper_text(project):
@@ -186,6 +187,107 @@ def test_edit_content_mode_strips_fences_and_wrapper_text(project):
     assert "```" not in text
     assert "以下が" not in text
     assert text.startswith("def greet(name):")
+
+
+# ----------------------------------------------------------------------
+# 削除・外部コマンド・git push（2026-07-18 方針変更で追加）
+# ----------------------------------------------------------------------
+
+def test_delete_file_inside_and_refuses_outside(project, tmp_path):
+    adapter = NachtCodeAdapter()
+    (project / "trash.txt").write_text("捨てる", encoding="utf-8")
+    result = adapter.execute(_req("delete_file", project, path="trash.txt"))
+    assert result.ok is True
+    assert not (project / "trash.txt").exists()
+    # 監査ログに記録される
+    audit = list((tmp_path / "audit").glob("audit-*.jsonl"))[0]
+    entry = json.loads(audit.read_text(encoding="utf-8").splitlines()[-1])
+    assert entry["action"] == "delete_file" and entry["path"] == "trash.txt"
+
+    outside = tmp_path / "keep.txt"
+    outside.write_text("外部", encoding="utf-8")
+    for bad in ["../keep.txt", str(outside)]:
+        refused = adapter.execute(_req("delete_file", project, path=bad))
+        assert refused.ok is False and "外は操作できません" in refused.output
+    assert outside.exists()  # 対象ディレクトリ外は削除できない
+
+
+def test_delete_dir_inside_but_never_root(project):
+    adapter = NachtCodeAdapter()
+    sub = project / "subdir"
+    sub.mkdir()
+    (sub / "a.txt").write_text("a", encoding="utf-8")
+    result = adapter.execute(_req("delete_dir", project, path="subdir"))
+    assert result.ok is True
+    assert not sub.exists()
+
+    # 対象ディレクトリ自体は削除できない
+    for self_ref in [".", str(project)]:
+        refused = adapter.execute(_req("delete_dir", project, path=self_ref))
+        assert refused.ok is False
+    assert project.exists()
+
+
+def test_run_command_runs_in_target_dir_and_audits(project, tmp_path):
+    result = NachtCodeAdapter().execute(
+        _req("run_command", project, command="pwd && echo marker-ok")
+    )
+    assert result.ok is True
+    assert "marker-ok" in result.output
+    assert str(project.resolve()) in result.output  # cwd が対象ディレクトリ
+    audit = list((tmp_path / "audit").glob("audit-*.jsonl"))[0]
+    entry = json.loads(audit.read_text(encoding="utf-8").splitlines()[-1])
+    assert entry["action"] == "run_command"
+    assert entry["exit_code"] == 0
+
+
+def _init_repo_with_bare_remote(project, tmp_path):
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=project, check=True)
+    subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=project)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=project)
+    subprocess.run(["git", "add", "-A"], cwd=project, check=True)
+    subprocess.run(["git", "commit", "-qm", "initial"], cwd=project, check=True)
+    bare = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+    subprocess.run(["git", "remote", "add", "origin", str(bare)],
+                   cwd=project, check=True)
+    return bare
+
+
+def _bare_head(bare) -> str:
+    proc = subprocess.run(["git", "log", "--oneline", "-1", "main"],
+                          cwd=bare, capture_output=True, text=True)
+    return proc.stdout.strip()
+
+
+def test_git_push_requires_confirmation(project, tmp_path):
+    bare = _init_repo_with_bare_remote(project, tmp_path)
+    adapter = NachtCodeAdapter()
+
+    # 確認なし → プレビューのみ・push されない
+    preview = adapter.execute(_req("git_push", project))
+    assert preview.ok is True
+    assert preview.data["needs_confirmation"] is True
+    assert "まだ実行していません" in preview.output
+    assert _bare_head(bare) == ""  # リモートは空のまま
+
+    # confirmed=True（人間の確認チャネル） → 実行される
+    pushed = adapter.execute(_req("git_push", project, confirmed=True))
+    assert pushed.ok is True
+    assert "push しました" in pushed.output
+    assert "initial" in _bare_head(bare)  # リモートに到達
+
+
+def test_planner_strips_llm_supplied_confirmed(project):
+    """LLMが計画に confirmed:true を書いても除去され、無人pushにならない。"""
+    content = ('{"steps": [{"tool": "nachtcode", "action": "git_push",'
+               ' "params": {"confirmed": true, "confirm": true}}]}')
+    client = _FakeLLM(content)
+    plan = plan_coding_task(
+        client, _build_registry(client), str(project), "pushして"
+    )
+    assert "confirmed" not in plan.steps[0].params
+    assert "confirm" not in plan.steps[0].params
 
 
 # ----------------------------------------------------------------------

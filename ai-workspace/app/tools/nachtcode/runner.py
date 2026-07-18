@@ -157,8 +157,8 @@ def run_nachtcode_task(
     print("Nacht Code")
     print(f"対象DIR   : {root}" + ("（git管理）" if is_git else "（git管理外）"))
     print(f"タスク    : {task_text}")
-    print("方針      : 削除・移動・git push・外部コマンドは実装されていません。")
-    print("            変更はすべて監査ログ（NACHTCODE_AUDIT_DIR）に diff で残ります。")
+    print("方針      : Claude Code 相当の運用。削除・外部コマンドは監査ログ記録の上で")
+    print("            自動実行。git push は確認（y/n）を経た場合のみ実行します。")
     if not is_git and not assume_yes:
         print("=" * 60)
         print("中断: 対象が git リポジトリではないため、変更の巻き戻し手段がありません。")
@@ -197,6 +197,38 @@ def run_nachtcode_task(
         text = detail or r.output
         for line in text.splitlines()[:40]:
             print(f"    {line}")
+    # git_push の確認ステップ: プレビュー（needs_confirmation）が返っていたら
+    # ここで人間の y/n を待ち、y の場合のみ confirmed=True で実行する。
+    # 確認なしの自動 push は行わない。
+    for r in results:
+        if r.skipped or not isinstance(r.data, dict) \
+                or not r.data.get("needs_confirmation"):
+            continue
+        print("=" * 60)
+        print("git push の確認:")
+        print(f"  remote : {r.data.get('remote')}（{r.data.get('url')}）")
+        print(f"  branch : {r.data.get('branch')}")
+        print("  送信されるコミット:")
+        for line in (r.data.get("commits") or "（なし）").splitlines()[:10]:
+            print(f"    {line}")
+        try:
+            answer = input("push を実行しますか? [y/N]: ").strip().lower()
+        except EOFError:
+            answer = ""
+        if answer == "y":
+            from app.tools.base import ToolRequest
+            result = NachtCodeAdapter().execute(ToolRequest(
+                action="git_push",
+                params={"dir": str(root), "remote": r.data.get("remote"),
+                        "branch": r.data.get("branch"), "confirmed": True},
+                task_text=task_text,
+            ))
+            print(("push 完了: " if result.ok else "push 失敗: ") + result.output)
+            if not result.ok:
+                failed += 1
+        else:
+            print("push を中止しました（実行していません）")
+
     print("=" * 60)
     audit_dir = os.environ.get("NACHTCODE_AUDIT_DIR", "data/nachtcode")
     print(f"結果      : 成功{ok} / 失敗{failed} / スキップ{skipped}")
