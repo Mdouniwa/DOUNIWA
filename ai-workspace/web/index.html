@@ -271,7 +271,16 @@
   }
 
   $('send').onclick = send;
-  $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+  // IME変換確定のEnterでは送信しない。isComposing に加え、確定直後に
+  // keydown が届くブラウザ向けに keyCode 229 と composition 区間も見る。
+  let composing = false;
+  $('input').addEventListener('compositionstart', () => { composing = true; });
+  $('input').addEventListener('compositionend', () => { composing = false; });
+  $('input').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    if (e.isComposing || e.keyCode === 229 || composing) return;
+    send();
+  });
 
   $('newSession').onclick = async () => {
     disarmDelete();
