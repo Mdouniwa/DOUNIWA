@@ -278,6 +278,37 @@ def test_git_push_requires_confirmation(project, tmp_path):
     assert "initial" in _bare_head(bare)  # リモートに到達
 
 
+def test_extra_params_confirmed_cannot_bypass_push_confirmation(
+        project, tmp_path, monkeypatch):
+    """CLI --param 等の extra_params に confirmed:true を書いても、
+    git_push は確認プロンプトを迂回できずプレビュー止まりになる。"""
+    from app.orchestrator.executor import execute_plan
+    from app.orchestrator.planner import Plan, PlanStep
+    from app.tools.registry import ToolRegistry
+
+    monkeypatch.setenv("EXECUTOR_LOG_DIR", str(tmp_path / "logs"))
+    bare = _init_repo_with_bare_remote(project, tmp_path)
+    registry = ToolRegistry()
+    registry.register(NachtCodeAdapter())
+    plan = Plan(
+        steps=(PlanStep(tool="nachtcode", action="git_push",
+                        params={"dir": str(project)}),),
+        source="llm", note="",
+    )
+
+    results = execute_plan(
+        plan, registry, "pushして",
+        extra_params={"confirmed": True, "confirm": True},
+    )
+
+    r = results[0]
+    assert r.ok is True
+    assert r.data.get("needs_confirmation") is True  # プレビュー止まり
+    assert "まだ実行していません" in r.output
+    assert "confirmed" not in r.params and "confirm" not in r.params
+    assert _bare_head(bare) == ""  # リモートには何も届いていない
+
+
 def test_planner_strips_llm_supplied_confirmed(project):
     """LLMが計画に confirmed:true を書いても除去され、無人pushにならない。"""
     content = ('{"steps": [{"tool": "nachtcode", "action": "git_push",'

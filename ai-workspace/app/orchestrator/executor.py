@@ -194,6 +194,11 @@ def execute_plan(
     for i, step in enumerate(plan.steps, start=1):
         # CLI --param 等の共通パラメータ。計画側の指定が優先。
         params = {**(extra_params or {}), **step.params}
+        if step.tool == "nachtcode" and step.action == "git_push":
+            # push の確認は人間の確認チャネル（runner.py の y/n 入力・
+            # UI の確認POST）専用。extra_params 由来の confirmed は信用しない。
+            params = {k: v for k, v in params.items()
+                      if k not in ("confirmed", "confirm")}
 
         elapsed = time.monotonic() - start
         if elapsed > budget:
