@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kuro·console — tasks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="kuro.css?v=20260718e">
+<script src="kuro.js?v=20260718e"></script>
+</head>
+<body>
+<div class="app">
+  <div class="noise"></div>
+  <header class="bar">
+    <a class="logo" href="index.html">
+      <div class="logo-box">❯</div>
+      <div class="logo-text">kuro<span>·console</span></div>
+      <div class="ver">v0.5.0</div>
+    </a>
+    <nav class="tabs">
+      <a class="tab" href="index.html">CHAT</a>
+      <span class="tab active">TASKS</span>
+      <a class="tab" href="code.html">CODE</a>
+    </nav>
+    <div class="head-right">
+      <div class="status">
+        <span class="dot idle" id="statusDot"></span>
+        <span class="status-label idle" id="statusLabel">待機</span>
+      </div>
+      <div class="metrics" id="metrics"></div>
+    </div>
+  </header>
+  <main class="scroll">
+    <div class="wrap-wide">
+      <div class="queue-head">
+        <div class="queue-title">TASK QUEUE</div>
+        <div class="queue-counts" id="counts"></div>
+      </div>
+      <div class="task-list" id="list"><div class="empty">loading…</div></div>
+    </div>
+  </main>
+  <footer class="bar">
+    <div class="input-row" style="max-width:860px">
+      <div class="input-wrap">
+        <span class="prompt-char">❯</span>
+        <input id="newTask" placeholder="新規タスクを入力（モデル自動選択・新しい会話として実行）" autocomplete="off">
+      </div>
+      <button class="send" id="submitTask">↑</button>
+    </div>
+    <div class="foot-note wide" style="margin-top:9px">
+      <span>orchestrator · local · telemetry off</span>
+      <span id="footRight"></span>
+    </div>
+  </footer>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const openSet = new Set();
+  const POLL_MS = 3000;
+  let armedDelId = null;   // 削除2段階目待ちのタスクID
+  let armedDelTimer = null;
+
+  function disarmDelete() {
+    armedDelId = null;
+    clearTimeout(armedDelTimer);
+  }
+
+  function toolChip(taskId, tool) {
+    const badge = KURO.badge(tool.state);
+    const href = taskId
+      ? 'tool.html?task=' + encodeURIComponent(taskId) + '&step=' + tool.index
+      : null;
+    const inner =
+      '<span class="tool-glyph">' + KURO.glyph(tool.tool) + '</span>' +
+      '<span class="tool-name">' + KURO.esc(tool.tool) + '</span>' +
+      '<span class="tool-action">' + KURO.esc(tool.action) + '</span>' +
+      '<span class="badge ' + tool.state + '">' + badge + '</span>';
+    if (!href) return '<span class="tool-chip ' + tool.state + '">' + inner + '</span>';
+    return '<a class="tool-chip ' + tool.state + '" href="' + href + '" onclick="event.stopPropagation()">' + inner + '</a>';
+  }
+
+  function card(t) {
+    const key = t.id || t.run_id;
+    const open = openSet.has(key);
+    const running = t.status === 'running';
+    let statusText = KURO.statusText(t.status);
+    if (running && t.started_at) {
+      const sec = Math.max(0, Math.floor((Date.now() - new Date(t.started_at)) / 1000));
+      statusText += ' ' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+    }
+    const timeText = t.time + (t.duration_s != null && t.duration_s > 0 ? ' · ' + KURO.fmtDur(t.duration_s) : '');
+    let html = '<div class="card' + (running ? ' running' : '') + (open ? ' open' : '') + '" data-key="' + KURO.esc(key) + '">';
+    html += '<div class="card-head">';
+    html += '<span class="dot ' + (running ? 'boot' : t.status === 'failed' ? 'warn' : 'done') + '"></span>';
+    html += '<div class="t-main">';
+    html += '<div class="t-title">' + KURO.esc(t.title) + '</div>';
+    html += '<div class="t-meta">';
+    html += '<span class="t-id">#' + KURO.esc(t.id || t.run_id) + '</span>';
+    html += '<span class="t-time">' + KURO.esc(timeText) + '</span>';
+    html += '<span class="t-status ' + t.status + '">' + KURO.esc(statusText) + '</span>';
+    if (t.stubbed) html += '<span class="t-status">stub</span>';
+    // 削除は完了/失敗タスクのみ（実行中はサーバー側でも409で拒否される）
+    if (t.id && !running) {
+      const armed = armedDelId === t.id;
+      html += '<span class="conv-del' + (armed ? ' armed' : '') + '" data-del="' +
+        KURO.esc(t.id) + '">' + (armed ? '本当に削除?' : '削除') + '</span>';
+    }
+    html += '</div></div>';
+    html += '<span class="chip-model">' + KURO.esc(t.model_label || t.model) + '</span>';
+    html += '<span class="tag">' + KURO.esc(t.tag) + '</span>';
+    html += '<span class="chev">▾</span>';
+    html += '</div>';
+    if (running) html += '<div class="sweep-track"><div class="sweep"></div></div>';
+    html += '<div class="card-body">';
+    if (t.tools.length) {
+      html += '<div class="section-label">TOOL CALLS</div>';
+      html += '<div class="tool-chips">' + t.tools.map(x => toolChip(t.id, x)).join('') + '</div>';
+    }
+    if (t.plan_note) {
+      html += '<div class="section-label">NOTE</div><pre class="log">' + KURO.esc(t.plan_note) + '</pre>';
+    }
+    if (t.log) html += '<pre class="log">' + KURO.esc(t.log) + '</pre>';
+    if (!t.tools.length && !t.log && !t.plan_note) {
+      html += '<div class="section-label">TOOL CALLS</div><pre class="log">（ツール呼び出しなし）</pre>';
+    }
+    html += '</div></div>';
+    return html;
+  }
+
+  async function refresh() {
+    let data;
+    try { data = await KURO.json('/api/tasks?limit=20'); }
+    catch { return; }
+    const tasks = data.tasks;
+    const nRun = tasks.filter(t => t.status === 'running').length;
+    const nFail = tasks.filter(t => t.status === 'failed').length;
+    const nDone = tasks.filter(t => t.status === 'done').length;
+    $('counts').innerHTML =
+      '<span class="run">● ' + nRun + ' 実行中</span>' +
+      '<span>● ' + nDone + ' 完了</span>' +
+      '<span class="' + (nFail ? 'fail' : '') + '">● ' + nFail + ' 失敗</span>';
+    $('list').innerHTML = tasks.length
+      ? tasks.map(card).join('')
+      : '<div class="empty">タスク履歴がありません</div>';
+    for (const el of document.querySelectorAll('.card-head')) {
+      el.onclick = () => {
+        const key = el.parentElement.dataset.key;
+        openSet.has(key) ? openSet.delete(key) : openSet.add(key);
+        el.parentElement.classList.toggle('open');
+      };
+    }
+    // 個別削除（2段階確認: 1回目で警告、3秒以内の2回目で実行）
+    for (const el of document.querySelectorAll('.conv-del[data-del]')) {
+      el.onclick = async (e) => {
+        e.stopPropagation();
+        const id = el.dataset.del;
+        if (armedDelId !== id) {
+          disarmDelete();
+          armedDelId = id;
+          armedDelTimer = setTimeout(() => { disarmDelete(); refresh(); }, 3000);
+          refresh();
+          return;
+        }
+        disarmDelete();
+        try {
+          const res = await fetch('/api/tasks/' + encodeURIComponent(id),
+                                  { method: 'DELETE' });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            $('footRight').textContent =
+              '削除できません: ' + (data.detail || 'HTTP ' + res.status);
+          }
+        } catch (err) {
+          $('footRight').textContent = '削除に失敗しました: ' + err.message;
+        }
+        refresh();
+      };
+    }
+    $('footRight').textContent =
+      'queue depth ' + nRun + ' · last sync ' + new Date().toTimeString().slice(0, 8);
+  }
+
+  async function tickHealth() {
+    const h = await KURO.health();
+    KURO.applyHealth(h, $('statusDot'), $('statusLabel'));
+    $('metrics').textContent = h.endpoint_configured
+      ? (h.default_model + ' · local' + (h.llm_up ? '' : ' · unreachable'))
+      : 'llm未設定 · stub';
+  }
+
+  // 新規タスク投入（新しい会話として実行し、一覧のポーリングで進捗が見える）
+  async function submitTask() {
+    const input = $('newTask');
+    const text = input.value.trim();
+    if (!text) return;
+    try {
+      await KURO.json('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, model: null, session_id: null }),
+      });
+      input.value = '';
+      refresh();
+    } catch (e) {
+      input.value = text;  // 失敗時は入力を保持
+      $('footRight').textContent = '送信に失敗しました: ' + e.message;
+    }
+  }
+  $('submitTask').onclick = submitTask;
+  let composingTask = false;
+  $('newTask').addEventListener('compositionstart', () => { composingTask = true; });
+  $('newTask').addEventListener('compositionend', () => { composingTask = false; });
+  $('newTask').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    if (e.isComposing || e.keyCode === 229 || composingTask) return;
+    submitTask();
+  });
+
+  refresh();
+  tickHealth();
+  setInterval(refresh, POLL_MS);
+  setInterval(tickHealth, 5000);
+})();
+</script>
+</body>
+</html>

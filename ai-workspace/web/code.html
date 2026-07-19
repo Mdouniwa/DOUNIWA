@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kuro·console — code</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="kuro.css?v=20260718e">
+<script src="kuro.js?v=20260718e"></script>
+</head>
+<body>
+<div class="app">
+  <div class="noise"></div>
+  <header class="bar">
+    <a class="logo" href="index.html">
+      <div class="logo-box">❯</div>
+      <div class="logo-text">kuro<span>·console</span></div>
+      <div class="ver">v0.5.0</div>
+    </a>
+    <nav class="tabs">
+      <a class="tab" href="index.html">CHAT</a>
+      <a class="tab" href="tasks.html">TASKS</a>
+      <span class="tab active">CODE</span>
+    </nav>
+    <div class="head-right">
+      <div class="status">
+        <span class="dot idle" id="statusDot"></span>
+        <span class="status-label idle" id="statusLabel">待機</span>
+      </div>
+      <div class="metrics" id="metrics"></div>
+    </div>
+  </header>
+  <main class="scroll">
+    <div class="wrap-wide">
+      <div class="queue-head">
+        <div class="queue-title">NACHT CODE <span style="letter-spacing:0.05em;color:#333">▚ 対象ディレクトリ限定のコーディングエージェント</span></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><span>TASK</span>
+          <span class="panel-hint">Claude Code相当の運用 · 変更は監査ログ記録 · push は確認後のみ</span></div>
+        <div style="padding:16px 18px" class="code-form">
+          <div class="code-label">対象ディレクトリ（絶対パス・候補クリックで入力／手打ちも可）</div>
+          <div class="tool-chips" id="dirChips"></div>
+          <div><a class="sw-btn" id="ghToggle">▚ GitHubから選ぶ ▾</a>
+            <span class="step-line" id="ghState" style="margin-left:10px"></span></div>
+          <div id="ghList" style="display:none"></div>
+          <input class="code-input" id="dir" placeholder="/path/to/project" autocomplete="off">
+          <div class="code-label">タスク内容</div>
+          <textarea class="code-textarea" id="task" placeholder="例: hello.py の greet 関数に docstring を追加してテストして"></textarea>
+          <div class="code-actions">
+            <a class="action-btn" id="run">実行 ▚</a>
+            <label class="check-row"><input type="checkbox" id="force"> git管理外でも実行（バックアップ確認済み）</label>
+            <span class="step-line" id="state"></span>
+          </div>
+          <div class="error-box" id="error" style="display:none"></div>
+        </div>
+      </div>
+      <div id="result"></div>
+    </div>
+  </main>
+  <footer class="bar slim">
+    <div class="foot-note wide">
+      <span>nachtcode · 変更は監査ログに diff で記録されます</span>
+      <span>対象ディレクトリの外へは一切アクセスしません</span>
+    </div>
+  </footer>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const POLL_MS = 3000;
+  let running = false;
+
+  function showError(msg) {
+    const box = $('error');
+    box.style.display = '';
+    box.textContent = msg;
+  }
+
+  function clearError() { $('error').style.display = 'none'; }
+
+  function stepState(s) {
+    if (s.skipped) return 'skip';
+    if (s.stubbed) return 'stub';
+    return s.ok ? 'done' : 'failed';
+  }
+
+  function panel(label, hint, bodyHtml) {
+    return '<div class="panel" style="margin-top:14px">' +
+      '<div class="panel-head"><span>' + KURO.esc(label) + '</span>' +
+      '<span class="panel-hint">' + KURO.esc(hint) + '</span></div>' + bodyHtml + '</div>';
+  }
+
+  function renderResult(run) {
+    let html = '';
+    const statusText = run.status === 'done' ? '完了' : '失敗';
+    const cls = run.status === 'done' ? 'ok' : 'ng';
+    let body = '<div style="padding:14px 18px">';
+    body += '<div class="step-line">ステータス: <span class="' + cls + '">' + statusText + '</span>';
+    if (run.record_id) {
+      body += ' · <a href="tool.html?task=' + encodeURIComponent(run.record_id) + '&step=1">詳細を Tool Detail で見る</a>';
+    }
+    body += '</div>';
+    if (run.summary) body += '<div class="step-line">' + KURO.esc(run.summary) + '</div>';
+    if (run.error) body += '<div class="error-box" style="margin-top:8px">' + KURO.esc(run.error) + '</div>';
+    // 実行計画
+    if (run.plan && run.plan.length) {
+      body += '<div class="code-label" style="margin-top:10px">実行計画</div>';
+      run.plan.forEach((p, i) => {
+        body += '<div class="step-line">' + (i + 1) + '. ' + KURO.esc(p.tool + '.' + p.action) +
+          (p.params && p.params.path ? ' <span style="color:#5a5a5a">' + KURO.esc(p.params.path) + '</span>' : '') + '</div>';
+      });
+    }
+    body += '</div>';
+    html += panel('RESULT', run.dir || '', body);
+
+    // git push の確認ダイアログ（needs_confirmation が返っている場合のみ）。
+    // 確認なしの自動 push は行わない。2段階クリックで実行する。
+    for (const s of (run.steps || [])) {
+      const d0 = s.data || {};
+      if (!d0.needs_confirmation) continue;
+      html += '<div class="panel" style="margin-top:14px;border-color:rgba(212,167,45,0.4)">' +
+        '<div class="panel-head"><span>GIT PUSH の確認</span>' +
+        '<span class="panel-hint">まだ実行されていません</span></div>' +
+        '<div style="padding:14px 18px">' +
+        '<div class="step-line">remote: ' + KURO.esc(d0.remote + '（' + (d0.url || '') + '）') + '</div>' +
+        '<div class="step-line">branch: ' + KURO.esc(d0.branch || '') + '</div>' +
+        '<pre style="margin-top:8px">' + KURO.esc(d0.commits || '（なし）') + '</pre>' +
+        '<div style="margin-top:10px"><a class="action-btn" id="pushBtn" data-remote="' +
+        KURO.esc(d0.remote) + '" data-branch="' + KURO.esc(d0.branch) + '" data-dir="' +
+        KURO.esc(d0.dir) + '">push を実行する</a>' +
+        '<span class="step-line" id="pushState" style="margin-left:12px"></span></div>' +
+        '</div></div>';
+    }
+
+    // 各ステップ
+    for (const s of (run.steps || [])) {
+      const st = stepState(s);
+      const mark = st === 'done' ? '<span class="ok">成功</span>'
+        : st === 'failed' ? '<span class="ng">失敗</span>'
+        : st === 'stub' ? '<span class="skip">stub（未実行）</span>'
+        : '<span class="skip">スキップ: ' + KURO.esc(s.skip_reason || '') + '</span>';
+      let inner = '<div style="padding:12px 18px"><div class="step-line">' + mark + '</div></div>';
+      const d = s.data || {};
+      if (d.diff) {
+        inner = '<pre>' + KURO.esc(d.diff) + '</pre>';
+      } else if (s.output && !s.skipped) {
+        inner = '<pre>' + KURO.esc(s.output.slice(0, 3000)) + '</pre>';
+      }
+      html += panel('STEP ' + s.index + ' · ' + s.tool + '.' + s.action,
+                    d.path || '', inner);
+    }
+    $('result').innerHTML = html;
+
+    // push確認ボタン: 2段階クリック（1回目で警告、3秒以内の2回目で実行）
+    const pushBtn = $('pushBtn');
+    if (pushBtn) {
+      let armed = false, timer = null;
+      pushBtn.onclick = async () => {
+        if (!armed) {
+          armed = true;
+          pushBtn.textContent = '本当に push しますか?（もう一度クリック）';
+          timer = setTimeout(() => {
+            armed = false;
+            pushBtn.textContent = 'push を実行する';
+          }, 3000);
+          return;
+        }
+        clearTimeout(timer);
+        armed = false;
+        $('pushState').textContent = 'push 中…';
+        try {
+          const res = await KURO.json('/api/nachtcode/push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dir: pushBtn.dataset.dir, remote: pushBtn.dataset.remote,
+              branch: pushBtn.dataset.branch, confirm: true,
+            }),
+          });
+          $('pushState').textContent = res.ok ? '完了: ' + res.output : '失敗: ' + res.output;
+          pushBtn.style.display = 'none';
+        } catch (e) {
+          $('pushState').textContent = 'push に失敗しました: ' + e.message;
+        }
+      };
+    }
+  }
+
+  async function poll(runId) {
+    for (;;) {
+      await new Promise(r => setTimeout(r, POLL_MS));
+      let run;
+      try { run = await KURO.json('/api/nachtcode/' + runId); }
+      catch { continue; }
+      if (run.status === 'running') { $('state').textContent = '実行中…'; continue; }
+      running = false;
+      $('state').textContent = '';
+      renderResult(run);
+      return;
+    }
+  }
+
+  $('run').onclick = async () => {
+    if (running) return;
+    clearError();
+    $('result').innerHTML = '';
+    const dir = $('dir').value.trim();
+    const task = $('task').value.trim();
+    if (!dir || !task) { showError('対象ディレクトリとタスク内容の両方を入力してください'); return; }
+    running = true;
+    $('state').textContent = '計画生成中…';
+    try {
+      const res = await fetch('/api/nachtcode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dir, task, force: $('force').checked }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        running = false;
+        $('state').textContent = '';
+        showError(data.detail || ('HTTP ' + res.status));
+        return;
+      }
+      localStorage.setItem('kuro.nachtdir', dir);
+      await poll(data.run_id);
+    } catch (e) {
+      running = false;
+      $('state').textContent = '';
+      showError('リクエストに失敗しました: ' + e.message);
+    }
+  };
+
+  async function tickHealth() {
+    const h = await KURO.health();
+    KURO.applyHealth(h, $('statusDot'), $('statusLabel'));
+    $('metrics').textContent = h.endpoint_configured
+      ? (h.default_model + ' · local' + (h.llm_up ? '' : ' · unreachable'))
+      : 'llm未設定 · stub';
+  }
+
+  // ディレクトリ候補（固定2件・存在＆安全ガード通過分のみサーバーが返す）
+  async function loadDirChips() {
+    let data;
+    try { data = await KURO.json('/api/nachtcode/suggest-dirs'); }
+    catch { return; }
+    const box = $('dirChips');
+    box.innerHTML = '';
+    for (const d of data.dirs) {
+      const chip = document.createElement('a');
+      chip.className = 'tool-chip';
+      chip.innerHTML =
+        '<span class="tool-glyph">▚</span>' +
+        '<span class="tool-name">' + KURO.esc(d.label) + '</span>' +
+        '<span class="tool-action">' + KURO.esc(d.path) + '</span>' +
+        (d.git ? '<span class="badge done">git</span>' : '<span class="badge">no-git</span>');
+      chip.onclick = () => { $('dir').value = d.path; };
+      box.appendChild(chip);
+    }
+  }
+
+  // GitHubリポジトリ選択: 一覧取得（読み取りのみ）→ 選択でクローン or 既存利用
+  let ghLoaded = false;
+  $('ghToggle').onclick = async () => {
+    const box = $('ghList');
+    if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+    box.style.display = '';
+    if (ghLoaded) return;
+    $('ghState').textContent = '一覧を取得中…';
+    try {
+      const data = await KURO.json('/api/nachtcode/github-repos');
+      $('ghState').textContent = data.stubbed ? 'GITHUB_TOKEN 未設定（stub）' : '';
+      box.innerHTML = '';
+      for (const r of data.repos) {
+        const item = document.createElement('div');
+        item.className = 'conv-item';
+        item.innerHTML =
+          '<div class="conv-title">' + (r.private ? '🔒 ' : '') + KURO.esc(r.full_name) + '</div>' +
+          '<div class="conv-meta"><span>' + KURO.esc(r.updated_at) + ' · ' +
+          KURO.esc((r.description || '').slice(0, 60)) + '</span></div>';
+        item.onclick = async () => {
+          $('ghState').textContent = 'クローン中…（初回は時間がかかります）';
+          try {
+            const res = await KURO.json('/api/nachtcode/clone', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ repo: r.full_name }),
+            });
+            $('dir').value = res.dir;
+            localStorage.setItem('kuro.nachtdir', res.dir);
+            $('ghState').textContent = res.reused
+              ? '既存を使用（再クローンなし）: ' + res.dir
+              : 'クローン完了: ' + res.dir;
+            box.style.display = 'none';
+          } catch (e) {
+            $('ghState').textContent = 'クローン失敗: ' + e.message;
+          }
+        };
+        box.appendChild(item);
+      }
+      ghLoaded = true;
+    } catch (e) {
+      $('ghState').textContent = '一覧の取得に失敗: ' + e.message;
+    }
+  };
+
+  $('dir').value = localStorage.getItem('kuro.nachtdir') || '';
+  loadDirChips();
+  tickHealth();
+  setInterval(tickHealth, 5000);
+})();
+</script>
+</body>
+</html>

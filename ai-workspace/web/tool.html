@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kuro·console — tool detail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="kuro.css?v=20260718e">
+<script src="kuro.js?v=20260718e"></script>
+</head>
+<body>
+<div class="app">
+  <div class="noise"></div>
+  <header class="bar">
+    <a class="logo" href="index.html">
+      <div class="logo-box">❯</div>
+      <div class="logo-text">kuro<span>·console</span></div>
+      <div class="ver">v0.5.0</div>
+    </a>
+    <nav class="tabs">
+      <a class="tab" href="index.html">CHAT</a>
+      <a class="tab active" href="tasks.html">TASKS</a>
+      <a class="tab" href="code.html">CODE</a>
+    </nav>
+    <div class="head-right">
+      <div class="metrics" id="metrics"></div>
+    </div>
+  </header>
+  <div class="crumb-bar">
+    <div class="crumb-inner">
+      <a class="back" href="tasks.html">‹</a>
+      <span class="crumb-glyph" id="crumbGlyph"></span>
+      <div class="crumb-text" id="crumbText"></div>
+      <span class="state-badge" id="stateBadge"></span>
+      <div class="switcher" id="switcher"></div>
+    </div>
+  </div>
+  <main class="scroll">
+    <div class="wrap-wide" id="content"><div class="empty">loading…</div></div>
+  </main>
+  <footer class="detail-footer">
+    <div class="detail-footer-inner">
+      <span class="footer-note" id="footNote"></span>
+      <a class="action-btn" id="actionBtn" style="display:none"></a>
+    </div>
+  </footer>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const qs = new URLSearchParams(location.search);
+  const taskId = qs.get('task');
+  const stepIdx = parseInt(qs.get('step') || '1', 10);
+
+  function stepState(s) {
+    if (s.skipped) return 'skip';
+    if (s.stubbed) return 'stub';
+    return s.ok ? 'done' : 'failed';
+  }
+
+  function metaRow(label, value, kind) {
+    return '<div class="meta-label">' + KURO.esc(label) + '</div>' +
+      '<div class="meta-val' + (kind ? ' ' + kind : '') + '">' + KURO.esc(value) + '</div>';
+  }
+
+  function panel(label, hint, bodyHtml) {
+    return '<div class="panel">' +
+      '<div class="panel-head"><span>' + KURO.esc(label) + '</span>' +
+      '<span class="panel-hint">' + KURO.esc(hint) + '</span></div>' + bodyHtml + '</div>';
+  }
+
+  function render(task, step) {
+    const state = stepState(step);
+    $('crumbGlyph').textContent = KURO.glyph(step.tool);
+    $('crumbText').innerHTML =
+      KURO.esc(step.tool.toUpperCase()) +
+      '<span class="sep"> · </span><span class="act">' + KURO.esc(step.action) + '</span>';
+    const badgeText = KURO.badge(state);
+    $('stateBadge').textContent = badgeText;
+    $('stateBadge').className = 'state-badge ' + state;
+
+    // ステップ切替（同一タスク内のツール呼び出し）
+    $('switcher').innerHTML = task.steps.map(s => {
+      const active = s.index === step.index ? ' active' : '';
+      return '<a class="sw-btn' + active + '" href="tool.html?task=' +
+        encodeURIComponent(task.id) + '&step=' + s.index + '">' +
+        s.index + ' ' + KURO.esc(s.tool) + '</a>';
+    }).join('');
+
+    // CALL META — TaskRecord / StepResult の実データをそのまま並べる
+    let meta = '';
+    meta += metaRow('STATUS',
+      state === 'skip' ? 'スキップ: ' + (step.skip_reason || '')
+        : state === 'stub' ? 'stub（実際には実行されていない）'
+        : state === 'done' ? '成功' : '失敗',
+      state === 'done' ? 'ok' : state === 'failed' ? 'warn' : '');
+    meta += metaRow('実行時刻', step.started_at || '—（未実行）');
+    if (!step.skipped) meta += metaRow('所要時間', KURO.fmtDur(step.duration_s));
+    const d = step.data || {};
+    if (step.tool === 'obsidian') {
+      if (d.vault) meta += metaRow('VAULT', d.vault, 'path');
+      if (d.path) meta += metaRow('保存先', d.path, 'path');
+    } else if (step.tool === 'github') {
+      if (d.repo) meta += metaRow('リポジトリ', d.repo, 'path');
+      if (d.path) meta += metaRow('取得パス', d.path, 'path');
+    } else if (step.tool === 'n8n') {
+      if (d.status_code) meta += metaRow('レスポンス', 'HTTP ' + d.status_code, 'ok');
+      if (d.count != null) meta += metaRow('件数', String(d.count));
+    } else if (step.tool === 'nachtcode') {
+      if (d.dir) meta += metaRow('対象DIR', d.dir, 'path');
+      if (d.path) meta += metaRow('FILE', d.path, 'path');
+      if (d.commit) meta += metaRow('COMMIT', d.commit, 'ok');
+      if (d.exit_code != null) meta += metaRow('EXIT CODE', String(d.exit_code),
+                                               d.exit_code === 0 ? 'ok' : 'warn');
+    }
+    meta += metaRow('タスク', '#' + task.id + ' · ' + task.title);
+    meta += metaRow('モデル', task.model_label || task.model);
+    meta += metaRow('種別', task.tag + ' · 計画: ' + task.plan_source);
+    $('content').innerHTML =
+      panel('CALL META', '', '<div class="meta-grid">' + meta + '</div>');
+
+    // Nacht Code の変更差分
+    if (step.tool === 'nachtcode' && d.diff) {
+      $('content').innerHTML += panel(
+        'DIFF', 'unified · ' + new Blob([d.diff]).size + ' B',
+        '<pre>' + KURO.esc(d.diff) + '</pre>');
+    }
+
+    // PARAMS（executor が解決した実引数）
+    const paramsJson = JSON.stringify(step.params || {}, null, 2);
+    $('content').innerHTML += panel(
+      'PARAMS', 'json · ' + new Blob([paramsJson]).size + ' B',
+      '<pre>' + KURO.esc(paramsJson) + '</pre>');
+
+    // ToolResult.data（構造化結果）
+    if (d && Object.keys(d).length) {
+      const dataJson = JSON.stringify(d, null, 2);
+      $('content').innerHTML += panel(
+        'RESULT DATA', 'json · ' + new Blob([dataJson]).size + ' B',
+        '<pre>' + KURO.esc(dataJson) + '</pre>');
+    }
+
+    // 出力プレビュー
+    if (step.output) {
+      $('content').innerHTML += panel(
+        '出力プレビュー', new Blob([step.output]).size + ' B',
+        '<div class="body-preview">' + KURO.esc(step.output) + '</div>');
+    }
+
+    // フッター: 外部で開くアクション
+    if (step.tool === 'obsidian' && d.path) {
+      $('footNote').textContent = 'obsidian:// URI scheme · local vault';
+      const btn = $('actionBtn');
+      btn.style.display = '';
+      btn.textContent = 'Obsidian で開く ↗';
+      btn.href = 'obsidian://open?path=' + encodeURIComponent(d.path);
+    } else if (step.tool === 'github' && d.repo) {
+      $('footNote').textContent = 'api.github.com · fine-grained PAT';
+      const btn = $('actionBtn');
+      btn.style.display = '';
+      btn.textContent = 'GitHub で見る ↗';
+      btn.href = 'https://github.com/' + d.repo;
+      btn.target = '_blank';
+    } else {
+      $('footNote').textContent = 'orchestrator · local · telemetry off';
+    }
+  }
+
+  (async () => {
+    $('metrics').textContent = '';
+    if (!taskId) {
+      $('content').innerHTML = '<div class="empty">?task=&lt;record_id&gt; が必要です</div>';
+      return;
+    }
+    let task;
+    try { task = await KURO.json('/api/tasks/' + encodeURIComponent(taskId)); }
+    catch (e) {
+      $('content').innerHTML = '<div class="empty">タスクが見つかりません: ' + KURO.esc(taskId) + '</div>';
+      return;
+    }
+    if (!task.steps || !task.steps.length) {
+      $('content').innerHTML = '<div class="empty">このタスクにツール呼び出しはありません</div>';
+      return;
+    }
+    const step = task.steps.find(s => s.index === stepIdx) || task.steps[0];
+    render(task, step);
+  })();
+})();
+</script>
+</body>
+</html>
