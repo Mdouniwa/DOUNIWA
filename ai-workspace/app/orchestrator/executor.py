@@ -199,6 +199,12 @@ def execute_plan(
             # UI の確認POST）専用。extra_params 由来の confirmed は信用しない。
             params = {k: v for k, v in params.items()
                       if k not in ("confirmed", "confirm")}
+        if step.tool == "browser":
+            # ドメイン承認・write承認・allowlist恒久追記も人間チャネル専用。
+            # extra_params（CLI --param 等）由来の承認フラグは信用しない。
+            from app.tools.browser.adapter import HUMAN_ONLY_PARAM_KEYS
+            params = {k: v for k, v in params.items()
+                      if k not in HUMAN_ONLY_PARAM_KEYS}
 
         elapsed = time.monotonic() - start
         if elapsed > budget:
@@ -220,6 +226,24 @@ def execute_plan(
             ))
             logger.warning("step %d/%d %s -> スキップ: %s", i, total, step.label, reason)
             continue
+
+        if step.tool == "browser":
+            # インジェクション隔離（層3）: browser の取得結果を別の browser
+            # ステップの params に差し込ませない。外部ページの内容が次の
+            # ブラウザ行動の決定に自動流入する経路を構造的に絶つ。
+            # 保存・要約（obsidian / llm 等への差し込み）は従来通り可能。
+            tainted = sorted(n for n in refs if results[n - 1].tool == "browser")
+            if tainted:
+                reason = (
+                    f"browser の取得結果（step{tainted[0]}）を別の browser "
+                    "ステップに差し込むことはできません（インジェクション隔離）"
+                )
+                results.append(StepResult(
+                    index=i, tool=step.tool, action=step.action, params=params,
+                    skipped=True, skip_reason=reason,
+                ))
+                logger.warning("step %d/%d %s -> スキップ: %s", i, total, step.label, reason)
+                continue
 
         blocked = sorted(
             n for n in refs if results[n - 1].skipped or not results[n - 1].ok

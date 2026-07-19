@@ -179,6 +179,12 @@ def _parse_steps(obj: dict, registry: ToolRegistry) -> tuple[PlanStep, ...] | No
             # LLMが計画に confirmed を書いても必ず除去し、無人pushを防ぐ。
             params = {k: v for k, v in params.items()
                       if k not in ("confirmed", "confirm")}
+        if tool == "browser":
+            # ドメイン承認・write承認・allowlist恒久追記のフラグは
+            # 人間の承認チャネル専用。LLMが計画に書いても必ず除去する。
+            from app.tools.browser.adapter import HUMAN_ONLY_PARAM_KEYS
+            params = {k: v for k, v in params.items()
+                      if k not in HUMAN_ONLY_PARAM_KEYS}
         steps.append(PlanStep(tool=tool, action=action, params=params))
     return tuple(steps)
 

@@ -1,0 +1,7 @@
+{
+  "_comment": "browser ツールのドメイン許可リスト。allowed_domains にあるドメイン（サブドメイン含む）は承認なしでアクセス可。追加は原則、アクセス時の承認ダイアログで『恒久許可』を選ぶ（人間の操作でのみ追記される）。手動で足す場合は \"example.com\" 形式で allowed_domains に追記する。",
+  "allowed_domains": [
+    "zenn.dev",
+    "github.com"
+  ]
+}
