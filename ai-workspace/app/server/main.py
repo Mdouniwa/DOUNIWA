@@ -437,6 +437,64 @@ def post_nachtcode_push(req: PushRequest) -> dict:
     return {"ok": result.ok, "output": result.output, "data": result.data}
 
 
+class BrowserConfirmRequest(BaseModel):
+    """browser の人間承認チャネル（UI）からの確認POST。
+
+    kind="domain": ドメイン承認。persist=True（恒久ボタン）のときだけ
+    allowlist へ恒久追記する。kind="write": write承認。confirm_token は
+    プレビュー時に adapter が発行したワンタイムトークン。
+    """
+
+    kind: str                        # "domain" | "write"
+    action: str                      # browser の action 名
+    params: dict = {}                # プレビュー時と同じ params
+    persist: bool = False            # domain: 恒久追記（UIの恒久ボタンのみ True）
+    confirm_token: str | None = None  # write: ワンタイムトークン
+
+
+@app.post("/api/browser/confirm")
+def post_browser_confirm(req: BrowserConfirmRequest) -> dict:
+    """browser の承認済み再実行。/api/nachtcode/push と同型の人間チャネル。
+
+    承認フラグ（domain_approved / confirmed / confirm_token）はこの
+    エンドポイント自身が付与する。クライアントが params に紛れ込ませた
+    承認フラグは必ず除去する（人間チャネル以外からの注入を遮断）。
+    """
+    from app.tools.base import ToolRequest
+    from app.tools.browser.adapter import (
+        HUMAN_ONLY_PARAM_KEYS,
+        BrowserAdapter,
+        add_domain_to_allowlist,
+    )
+
+    if req.action not in BrowserAdapter.supported_actions:
+        raise HTTPException(status_code=400, detail=f"未知のaction: {req.action}")
+    params = {k: v for k, v in req.params.items()
+              if k not in HUMAN_ONLY_PARAM_KEYS}
+    if req.kind == "domain":
+        params["domain_approved"] = True
+        if req.persist:
+            # 恒久追記の対象は params の url から導出し、クライアントが
+            # 無関係なドメインを追記させる余地を残さない
+            from urllib.parse import urlsplit
+            host = (urlsplit(str(params.get("url") or "")).hostname or "").lower()
+            error = add_domain_to_allowlist(host)
+            if error:
+                raise HTTPException(status_code=400, detail=error)
+    elif req.kind == "write":
+        params["confirmed"] = True
+        if req.confirm_token:
+            params["confirm_token"] = req.confirm_token
+    else:
+        raise HTTPException(
+            status_code=400, detail="kind は domain / write のいずれかです"
+        )
+    result = BrowserAdapter().execute(ToolRequest(
+        action=req.action, params=params, task_text="UIからの承認"
+    ))
+    return {"ok": result.ok, "output": result.output, "data": result.data}
+
+
 @app.get("/api/nachtcode/github-repos")
 def get_github_repos() -> dict:
     """GitHubリポジトリ一覧（読み取りのみ）。{run_id} ルートより先に定義。"""

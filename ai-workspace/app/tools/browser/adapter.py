@@ -2,9 +2,14 @@
 
 設計原則（2026-07-19 確定仕様）:
   - Lv1 read（fetch_page / screenshot / extract_elements / list_links）は
-    副作用なし。Lv2 write（click / fill_form / submit_form、Phase2で実装）は
+    副作用なし。Lv2 write（click / fill_form / submit_form）は
     人間の承認チャネル経由のみ。Lv3（ログイン・認証・購入）は実装しない
     （action 自体を持たないことで到達経路ごと絶つ）。
+  - write の承認は2段階トークン化: confirmed=True（人間チャネル注入）に加え、
+    プレビュー時に発行したワンタイムトークン（confirm_token）の一致を要求する。
+    トークンは action+params に束縛され、使用（一致・不一致とも）で消費される。
+    submit_form は送信を伴うため特に厳格で、初回承認の後にさらに最終確認
+    （トークン再発行→再承認）を挟む2段階確認とする。
   - ドメイン境界（A3ハイブリッド）: プロジェクトルートの browser_allowlist.json
     にあるドメイン（サブドメイン含む）は承認不要。未知ドメインは
     needs_confirmation(kind="domain") を返して停止し、人間の承認チャネルだけが
@@ -31,6 +36,7 @@ import json
 import logging
 import os
 import re
+import secrets
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime
@@ -48,11 +54,14 @@ EXTERNAL_END = "[外部データ終了]"
 #: 人間の承認チャネル（CLIのy/n・UIの確認POST）だけが注入してよい params キー。
 #: planner は計画パース時に、executor は extra_params マージ時に、
 #: browser ステップからこれらのキーを必ず除去する（LLM由来の注入を遮断）。
-HUMAN_ONLY_PARAM_KEYS = ("confirmed", "confirm", "domain_approved", "persist_domain")
+HUMAN_ONLY_PARAM_KEYS = (
+    "confirmed", "confirm", "domain_approved", "persist_domain", "confirm_token",
+)
 
 _MAX_TEXT_CHARS = 8000
 _MAX_ITEMS = 100
 _NAV_TIMEOUT_MS = 30_000
+_ACTION_TIMEOUT_MS = 10_000
 _DOMAIN_RE = re.compile(
     r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
     re.IGNORECASE,
@@ -60,6 +69,42 @@ _DOMAIN_RE = re.compile(
 
 #: ドメイン承認のプロセス内セッション記憶（恒久追記とは別物・再起動で消える）
 _session_approved_domains: set[str] = set()
+
+#: write承認のワンタイムトークン。プレビュー時に発行し、実行時に消費する。
+#: token -> {"fingerprint": action+paramsの束縛先, "stage": "initial"|"final"}
+_pending_write_tokens: dict[str, dict] = {}
+_MAX_PENDING_TOKENS = 20
+
+
+def _write_fingerprint(action: str, params: dict) -> str:
+    """トークンの束縛先。承認フラグ類を除いた params と action が一致する
+    再実行でのみトークンが有効になる（別操作への流用を防ぐ）。"""
+    core = {k: v for k, v in params.items() if k not in HUMAN_ONLY_PARAM_KEYS}
+    return f"{action}:" + json.dumps(core, ensure_ascii=False, sort_keys=True)
+
+
+def _issue_write_token(fingerprint: str, stage: str) -> str:
+    while len(_pending_write_tokens) >= _MAX_PENDING_TOKENS:
+        _pending_write_tokens.pop(next(iter(_pending_write_tokens)))
+    token = secrets.token_hex(8)
+    _pending_write_tokens[token] = {"fingerprint": fingerprint, "stage": stage}
+    return token
+
+
+def _consume_write_token(token, fingerprint: str) -> str | None:
+    """トークンを消費し、束縛先が一致すれば発行時の段階を返す。
+
+    一致・不一致にかかわらず1回で消費する（ワンタイム）。
+    """
+    entry = _pending_write_tokens.pop(str(token or ""), None)
+    if entry and entry["fingerprint"] == fingerprint:
+        return entry["stage"]
+    return None
+
+
+def clear_write_tokens() -> None:
+    """テスト用: 発行済みワンタイムトークンをリセットする。"""
+    _pending_write_tokens.clear()
 
 
 # ----------------------------------------------------------------------
@@ -162,6 +207,14 @@ class PageHandle(ABC):
     @abstractmethod
     def screenshot(self, path: str) -> None: ...
 
+    @abstractmethod
+    def click(self, selector: str) -> None:
+        """要素をクリックする（Lv2 write。承認ゲート通過後のみ呼ばれる）。"""
+
+    @abstractmethod
+    def fill(self, selector: str, value: str) -> None:
+        """入力欄に値を入れる（Lv2 write。承認ゲート通過後のみ呼ばれる）。"""
+
 
 class BrowserBackend(ABC):
     @abstractmethod
@@ -205,6 +258,14 @@ class _PlaywrightPage(PageHandle):
     def screenshot(self, path: str) -> None:
         self._page.screenshot(path=path, full_page=True)
 
+    def click(self, selector: str) -> None:
+        self._page.click(selector, timeout=_ACTION_TIMEOUT_MS)
+        self._page.wait_for_load_state("domcontentloaded",
+                                       timeout=_NAV_TIMEOUT_MS)
+
+    def fill(self, selector: str, value: str) -> None:
+        self._page.fill(selector, value, timeout=_ACTION_TIMEOUT_MS)
+
 
 class PlaywrightBackend(BrowserBackend):
     """headless Chromium でステートレスに1ページ開く。"""
@@ -239,6 +300,7 @@ class BrowserAdapter(ToolAdapter):
     name = "browser"
     supported_actions = (
         "fetch_page", "screenshot", "extract_elements", "list_links",
+        "click", "fill_form", "submit_form",
     )
     action_docs = {
         "fetch_page": (
@@ -255,8 +317,21 @@ class BrowserAdapter(ToolAdapter):
         "list_links": (
             'Webページ内のリンク一覧を取得する。params: {"url": "https://..."}'
         ),
+        "click": (
+            'ページ内の要素をクリックする（人間の承認後にのみ実行される）。'
+            ' params: {"url": "https://...", "selector": "CSSセレクタ"}'
+        ),
+        "fill_form": (
+            'フォームに値を入力する（送信はしない。人間の承認後にのみ実行される）。'
+            ' params: {"url": "https://...", "fields": {"CSSセレクタ": "入力値"}}'
+        ),
+        "submit_form": (
+            'フォームに入力して送信する（人間の承認＋最終確認の2段階を経て'
+            'のみ実行される）。params: {"url": "https://...",'
+            ' "fields": {"CSSセレクタ": "入力値"}, "submit_selector": "CSSセレクタ"}'
+        ),
     }
-    write_actions = ()
+    write_actions = ("click", "fill_form", "submit_form")
 
     def __init__(self, backend: BrowserBackend | None = None) -> None:
         self._backend = backend or _default_backend()
@@ -303,6 +378,16 @@ class BrowserAdapter(ToolAdapter):
                 },
             )
 
+        # Lv2 write: パラメータ検証 → 承認ゲート（2段階トークン）。
+        # 承認が揃っていなければページを開くことすらしない。
+        if request.action in self.write_actions:
+            error = self._validate_write_params(request)
+            if error:
+                return ToolResult(ok=False, output=error)
+            gate = self._write_gate(request, url, host)
+            if gate is not None:
+                return gate
+
         try:
             with self._backend.open(url) as page:
                 final_url = page.final_url
@@ -319,10 +404,148 @@ class BrowserAdapter(ToolAdapter):
                         data={"redirect_blocked": True, "url": url,
                               "final_url": final_url, "domain": final_host},
                     )
+                if request.action in self.write_actions:
+                    return self._write(request, page, url, final_url)
                 return self._read(request, page, url, final_url)
         except Exception as exc:
             logger.warning("browser %s 失敗: %s", request.action, exc)
             return ToolResult(ok=False, output=f"[browser] 取得失敗: {exc}")
+
+    # ------------------------------------------------------------------
+    # Lv2 write（承認ゲートと実行）
+    # ------------------------------------------------------------------
+
+    def _validate_write_params(self, request: ToolRequest) -> str | None:
+        p = request.params
+        if request.action == "click":
+            if not str(p.get("selector") or "").strip():
+                return '[browser] click には params {"selector": "CSSセレクタ"} が必要です'
+        elif request.action == "fill_form":
+            fields = p.get("fields")
+            if not isinstance(fields, dict) or not fields:
+                return ('[browser] fill_form には params'
+                        ' {"fields": {"CSSセレクタ": "入力値"}} が必要です')
+        elif request.action == "submit_form":
+            if not str(p.get("submit_selector") or "").strip():
+                return ('[browser] submit_form には params'
+                        ' {"submit_selector": "CSSセレクタ"} が必要です')
+            fields = p.get("fields")
+            if fields is not None and not isinstance(fields, dict):
+                return ('[browser] submit_form の fields は'
+                        ' {"CSSセレクタ": "入力値"} 形式で指定してください')
+        return None
+
+    def _write_preview_text(self, request: ToolRequest, url: str) -> str:
+        p = request.params
+        lines = [f"action : {request.action}", f"URL    : {url}"]
+        if p.get("selector"):
+            lines.append(f"click  : {p['selector']}")
+        fields = p.get("fields")
+        if isinstance(fields, dict):
+            for sel, val in fields.items():
+                lines.append(f"入力   : {sel} <- {str(val)[:100]}")
+        if p.get("submit_selector"):
+            lines.append(f"送信   : {p['submit_selector']}")
+        return "\n".join(lines)
+
+    def _write_gate(self, request: ToolRequest, url: str,
+                    host: str) -> ToolResult | None:
+        """write の承認ゲート。承認済みなら None、未承認ならプレビュー等を返す。
+
+        confirmed は人間の承認チャネルだけが注入できる（LLM由来の params は
+        planner / executor が HUMAN_ONLY_PARAM_KEYS を除去済み）。さらに
+        プレビュー時発行のワンタイムトークン一致を要求し、confirmed の注入
+        だけでは実行に到達できない。submit_form は初回承認の後に最終確認
+        （トークン再発行→再承認）をもう1段挟む。
+        """
+        params = request.params
+        fingerprint = _write_fingerprint(request.action, params)
+        preview = self._write_preview_text(request, url)
+        base_data = {
+            "needs_confirmation": True, "kind": "write",
+            "action": request.action, "url": url, "domain": host,
+            "params": {k: v for k, v in params.items()
+                       if k not in HUMAN_ONLY_PARAM_KEYS},
+            "preview": preview,
+        }
+        if params.get("confirmed") is not True:
+            token = _issue_write_token(fingerprint, "initial")
+            return ToolResult(
+                ok=True,
+                output=(
+                    "[確認待ち] 書き込み操作はまだ実行していません。\n"
+                    f"{preview}\n"
+                    "承認は人間の確認チャネル（CLI/UI）で行ってください。"
+                ),
+                data={**base_data, "confirm_token": token, "final": False},
+            )
+        stage = _consume_write_token(params.get("confirm_token"), fingerprint)
+        if stage is None:
+            return ToolResult(
+                ok=False,
+                output=(
+                    "[browser] 承認トークンが無いか一致しないため実行しません。"
+                    "プレビューからやり直してください。"
+                ),
+                data={"token_rejected": True, "action": request.action,
+                      "url": url},
+            )
+        if request.action == "submit_form" and stage == "initial":
+            token = _issue_write_token(fingerprint, "final")
+            return ToolResult(
+                ok=True,
+                output=(
+                    "[最終確認] submit_form は外部サイトへの送信を伴います。"
+                    "まだ実行していません。\n"
+                    f"{preview}\n"
+                    "もう一度、人間の確認チャネルで最終承認してください。"
+                ),
+                data={**base_data, "confirm_token": token, "final": True},
+            )
+        return None
+
+    def _write(self, request: ToolRequest, page: PageHandle,
+               url: str, final_url: str) -> ToolResult:
+        p = request.params
+        performed: list[str] = []
+        if request.action == "click":
+            selector = str(p["selector"]).strip()
+            page.click(selector)
+            performed.append(f"click: {selector}")
+        else:
+            fields = p.get("fields") if isinstance(p.get("fields"), dict) else {}
+            for sel, val in fields.items():
+                page.fill(str(sel), str(val))
+                performed.append(f"fill: {sel}")
+            if request.action == "submit_form":
+                submit_selector = str(p["submit_selector"]).strip()
+                page.click(submit_selector)
+                performed.append(f"submit: {submit_selector}")
+        # 操作でページ遷移した可能性があるため、遷移先ドメインを再検査する
+        post_url = page.final_url
+        post_host = _host_of(post_url)
+        data = {"external": True, "url": url, "final_url": post_url,
+                "performed": performed}
+        if not _domain_allowed(post_host):
+            return ToolResult(
+                ok=False,
+                output=(
+                    "[browser] 操作後に許可外ドメインへ遷移したため停止しました:"
+                    f" {post_host}（内容は取得していません）"
+                ),
+                data={**data, "redirect_blocked": True, "domain": post_host},
+            )
+        title = page.title()
+        data["title"] = title
+        logger.info("browser write 実行: %s %s", request.action, performed)
+        return ToolResult(
+            ok=True,
+            output=(
+                f"browser.{request.action} を実行しました（{'; '.join(performed)}）\n"
+                + _mark_external(f"URL: {post_url}\nタイトル: {title}")
+            ),
+            data=data,
+        )
 
     def _read(self, request: ToolRequest, page: PageHandle,
               url: str, final_url: str) -> ToolResult:

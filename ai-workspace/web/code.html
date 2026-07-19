@@ -93,6 +93,99 @@
       '<span class="panel-hint">' + KURO.esc(hint) + '</span></div>' + bodyHtml + '</div>';
   }
 
+  // browser の承認パネル（人間の承認チャネル）。
+  // domain は3択（今回だけ/恒久/拒否）、write は2段階クリックで確認する。
+  // 承認フラグとワンタイムトークンは /api/browser/confirm（サーバー側の
+  // 人間チャネル）が params に付与し、このUIは kind と token を渡すだけ。
+  function renderBrowserConfirm(box, d) {
+    box.innerHTML = '';
+    const isDomain = d.kind === 'domain';
+    const panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.style.cssText = 'margin-top:14px;border-color:rgba(212,167,45,0.4)';
+    panel.innerHTML = '<div class="panel-head"><span>' +
+      (isDomain ? 'BROWSER ドメイン承認'
+        : d.final ? 'BROWSER 送信の最終確認' : 'BROWSER 書き込みの確認') +
+      '</span><span class="panel-hint">まだ実行されていません</span></div>';
+    const body = document.createElement('div');
+    body.style.padding = '14px 18px';
+    const pre = document.createElement('pre');
+    pre.textContent = isDomain
+      ? ('ドメイン: ' + (d.domain || '') + '\nURL: ' + (d.url || '') +
+         '\naction: ' + (d.action || ''))
+      : (d.preview || '');
+    body.appendChild(pre);
+    const row = document.createElement('div');
+    row.style.marginTop = '10px';
+    const state = document.createElement('span');
+    state.className = 'step-line';
+    state.style.marginLeft = '12px';
+
+    async function send(payload) {
+      state.textContent = '実行中…';
+      try {
+        const res = await KURO.json('/api/browser/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const rd = res.data || {};
+        if (rd.needs_confirmation) { renderBrowserConfirm(box, rd); return; }
+        row.remove();
+        pre.textContent = (res.ok ? '完了:\n' : '失敗:\n') + res.output;
+      } catch (e) {
+        state.textContent = '失敗: ' + e.message;
+      }
+    }
+
+    function btn(label) {
+      const a = document.createElement('a');
+      a.className = 'action-btn';
+      a.style.marginRight = '8px';
+      a.textContent = label;
+      row.appendChild(a);
+      return a;
+    }
+
+    if (isDomain) {
+      btn('今回だけ許可').onclick = () =>
+        send({ kind: 'domain', action: d.action, params: d.params || {} });
+      btn('恒久許可（allowlistに追記）').onclick = () =>
+        send({ kind: 'domain', action: d.action, params: d.params || {},
+               persist: true });
+      btn('拒否').onclick = () => {
+        row.remove();
+        pre.textContent += '\n\nアクセスを中止しました（実行していません）';
+      };
+    } else {
+      // write: 2段階クリック（1回目で警告、3秒以内の2回目で実行）
+      const b = btn(d.final ? '送信を実行する' : (d.action + ' を実行する'));
+      let armed = false, timer = null;
+      const label = b.textContent;
+      b.onclick = () => {
+        if (!armed) {
+          armed = true;
+          b.textContent = '本当に実行しますか?（もう一度クリック）';
+          timer = setTimeout(() => { armed = false; b.textContent = label; }, 3000);
+          return;
+        }
+        clearTimeout(timer);
+        armed = false;
+        send({ kind: 'write', action: d.action, params: d.params || {},
+               confirm_token: d.confirm_token || null });
+      };
+      const cancel = btn('中止');
+      cancel.onclick = () => {
+        row.remove();
+        pre.textContent += '\n\n中止しました（実行していません）';
+      };
+    }
+    row.appendChild(state);
+    body.appendChild(row);
+    panel.appendChild(body);
+    box.appendChild(panel);
+  }
+
   function renderResult(run) {
     let html = '';
     const statusText = run.status === 'done' ? '完了' : '失敗';
@@ -116,11 +209,18 @@
     body += '</div>';
     html += panel('RESULT', run.dir || '', body);
 
-    // git push の確認ダイアログ（needs_confirmation が返っている場合のみ）。
-    // 確認なしの自動 push は行わない。2段階クリックで実行する。
+    // 確認ダイアログ（needs_confirmation が返っている場合のみ）。
+    // browser（kind: domain / write）は専用パネル、それ以外は git push。
+    // 確認なしの自動実行は行わない。
+    const browserConfs = [];
     for (const s of (run.steps || [])) {
       const d0 = s.data || {};
       if (!d0.needs_confirmation) continue;
+      if (s.tool === 'browser' || d0.kind === 'domain' || d0.kind === 'write') {
+        html += '<div class="browser-confirm" data-bidx="' + browserConfs.length + '"></div>';
+        browserConfs.push(d0);
+        continue;
+      }
       html += '<div class="panel" style="margin-top:14px;border-color:rgba(212,167,45,0.4)">' +
         '<div class="panel-head"><span>GIT PUSH の確認</span>' +
         '<span class="panel-hint">まだ実行されていません</span></div>' +
@@ -153,6 +253,11 @@
                     d.path || '', inner);
     }
     $('result').innerHTML = html;
+
+    // browser の確認パネル（人間の承認チャネル）を差し込む
+    document.querySelectorAll('.browser-confirm').forEach((el) => {
+      renderBrowserConfirm(el, browserConfs[+el.dataset.bidx]);
+    });
 
     // push確認ボタン: 2段階クリック（1回目で警告、3秒以内の2回目で実行）
     const pushBtn = $('pushBtn');
