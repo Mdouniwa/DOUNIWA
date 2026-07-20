@@ -606,3 +606,113 @@ def test_api_rejects_unknown_kind_and_action(api, allowlist):
     assert res1.status_code == 400
     assert res2.status_code == 400
     assert backend.opened == [] and backend.actions == []
+
+
+# ----------------------------------------------------------------------
+# CODE画面（Nacht Code）経路への配線
+#
+# CODE画面は nachtcode 専用レジストリ（runner._build_registry）を使う。
+# ここに browser が登録されていないと、計画に browser ステップを入れられず
+# PlanRejected になっていた（承認パネルへ到達できない構造的断絶）。
+# 配線後は browser ステップが計画に入り、かつ planner/executor 側の安全機構
+# （承認フラグ除去・承認ゲート・隔離層3）が CODE 経路でも効くことを担保する。
+# ----------------------------------------------------------------------
+
+class _FakeClient:
+    """plan_coding_task に渡す最小のフェイク LLM（実サーバー不使用）。"""
+
+    def __init__(self, plan_obj: dict) -> None:
+        self._content = json.dumps(plan_obj)
+
+    def chat(self, model, messages, temperature=0.6, max_tokens=None):
+        from app.llm.client import ChatResult
+        return ChatResult(model_name="fake", content=self._content, stubbed=False)
+
+
+def test_code_registry_includes_browser(allowlist):
+    """CODE画面のレジストリに browser が配線されている。"""
+    from app.llm.client import LLMClient
+    from app.tools.nachtcode.runner import _build_registry
+    registry = _build_registry(LLMClient())
+    assert "browser" in registry.names()
+    assert registry.get("browser").supported_actions  # 実体が引ける
+
+
+def test_code_catalog_lists_browser_actions(allowlist):
+    """CODE プランナーが LLM に見せる action カタログに browser.* が載る。"""
+    from app.llm.client import LLMClient
+    from app.tools.nachtcode.runner import _build_registry, _catalog
+    catalog = _catalog(_build_registry(LLMClient()))
+    assert "- browser.fetch_page:" in catalog
+    assert "- browser.click:" in catalog
+    assert "- browser.submit_form:" in catalog
+
+
+def test_code_plan_accepts_browser_step(allowlist, tmp_path):
+    """CODE経路の plan_coding_task が browser ステップを拒否せず計画に入れる。"""
+    from app.tools.nachtcode.runner import _build_registry, plan_coding_task
+    (tmp_path / "a.py").write_text("x = 1", encoding="utf-8")
+    client = _FakeClient({"steps": [
+        {"tool": "browser", "action": "fetch_page",
+         "params": {"url": "https://example.com/x"}}]})
+    plan = plan_coding_task(
+        client, _build_registry(client), str(tmp_path), "example.com を読んで")
+    assert plan.source == "llm"
+    assert [(s.tool, s.action) for s in plan.steps] == [("browser", "fetch_page")]
+    assert plan.steps[0].params == {"url": "https://example.com/x"}
+
+
+def test_code_plan_strips_human_only_keys_on_browser_step(allowlist, tmp_path):
+    """CODE経路でも browser ステップの承認フラグ（LLM由来）が除去される。"""
+    from app.tools.nachtcode.runner import _build_registry, plan_coding_task
+    (tmp_path / "a.py").write_text("x = 1", encoding="utf-8")
+    client = _FakeClient({"steps": [
+        {"tool": "browser", "action": "click",
+         "params": {"url": "https://example.com/p", "selector": "#btn",
+                    "confirmed": True, "confirm": True,
+                    "confirm_token": "deadbeef", "domain_approved": True,
+                    "persist_domain": True}}]})
+    plan = plan_coding_task(
+        client, _build_registry(client), str(tmp_path), "ボタンを押して")
+    for key in HUMAN_ONLY_PARAM_KEYS:
+        assert key not in plan.steps[0].params, f"{key} が除去されていない"
+    assert plan.steps[0].params == {"url": "https://example.com/p",
+                                    "selector": "#btn"}
+
+
+def test_code_path_browser_write_stops_at_preview(allowlist, monkeypatch):
+    """CODE経路の execute_plan で、承認なし browser write がプレビューで止まる。"""
+    from app.tools.browser import adapter as adapter_module
+    from app.tools.nachtcode.runner import _build_registry
+    backend = FakeBackend()
+    monkeypatch.setattr(adapter_module, "_default_backend", lambda: backend)
+    registry = _build_registry(_FakeClient({"steps": []}))
+    plan = Plan(steps=(PlanStep(
+        tool="browser", action="click",
+        params={"url": "https://example.com/p", "selector": "#btn"}),),
+        source="llm")
+    results = execute_plan(plan, registry, "テスト")
+    assert results[0].data.get("needs_confirmation") is True
+    assert results[0].data["kind"] == "write"
+    assert backend.actions == []  # ページ操作は行われていない
+
+
+def test_code_path_browser_isolation_layer3_holds(allowlist, monkeypatch):
+    """CODE経路でも browser 出力を別 browser ステップへ差し込めない（隔離層3）。"""
+    from app.tools.browser import adapter as adapter_module
+    from app.tools.nachtcode.runner import _build_registry
+    backend = FakeBackend()
+    monkeypatch.setattr(adapter_module, "_default_backend", lambda: backend)
+    registry = _build_registry(_FakeClient({"steps": []}))
+    plan = Plan(steps=(
+        PlanStep(tool="browser", action="fetch_page",
+                 params={"url": "https://example.com/a"}),
+        PlanStep(tool="browser", action="click",
+                 params={"url": "https://example.com/b",
+                         "selector": "{{step1.output}}"}),
+    ), source="llm")
+    results = execute_plan(plan, registry, "テスト")
+    assert results[0].ok is True
+    assert results[1].skipped is True
+    assert "インジェクション隔離" in results[1].skip_reason
+    assert backend.opened == ["https://example.com/a"]

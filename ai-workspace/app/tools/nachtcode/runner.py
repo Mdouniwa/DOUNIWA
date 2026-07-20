@@ -29,6 +29,7 @@ from app.orchestrator.planner import (
     check_guards,
 )
 from app.tools.base import ToolRequest
+from app.tools.browser.adapter import BrowserAdapter
 from app.tools.llm_gen.adapter import LLMGenAdapter
 from app.tools.nachtcode.adapter import NachtCodeAdapter, validate_project_dir
 from app.tools.registry import ToolRegistry
@@ -78,6 +79,12 @@ def _build_registry(client: LLMClient) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(NachtCodeAdapter())
     registry.register(LLMGenAdapter(client))
+    # browser を CODE画面経路にも配線する。承認パネル（code.html の
+    # renderBrowserConfirm）は実装済みだが、このレジストリに browser が
+    # 無いと計画に browser ステップが入れず PlanRejected になっていた。
+    # 承認ゲート・ドメイン境界・隔離層3は planner/executor 側（レジストリ
+    # 非依存）で効くため、登録するだけで安全機構はそのまま働く。
+    registry.register(BrowserAdapter())
     return registry
 
 
