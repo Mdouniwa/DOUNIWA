@@ -31,8 +31,9 @@
 
 .home-create-card {
   border: 4px dashed var(--color-primary);
-  border-radius: var(--radius-lg);
+  border-radius: 14px 26px 26px 14px;
   background: rgba(255, 179, 0, 0.08);
+  box-shadow: var(--shadow-book);
   aspect-ratio: 4 / 3.6;
   display: flex;
   flex-direction: column;

@@ -1,12 +1,25 @@
 .book-card {
+  position: relative;
   background: var(--color-card);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
+  /* 背表紙側(左)は控えめ、小口側(右)は絵本らしい大きめの丸みに */
+  border-radius: 14px 26px 26px 14px;
+  box-shadow: var(--shadow-book);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   width: 100%;
   text-align: center;
+}
+
+/* 背表紙(spine)を思わせる太めの縦グラデーション影 */
+.book-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 12px;
+  background: var(--spine-gradient);
+  z-index: 2;
+  pointer-events: none;
 }
 
 .book-card__cover {

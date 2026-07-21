@@ -78,9 +78,12 @@ export function PlayerScreen({ bookId, navigate }: PlayerScreenProps) {
 
   return (
     <div className="player-screen">
-      <button className="player-image-area" onClick={tapImage} aria-label="効果音を鳴らす">
-        {imageUrl && <img className="player-image" src={imageUrl} alt="" draggable={false} />}
-      </button>
+      <div className="player-page-frame">
+        <span className="player-gutter" aria-hidden />
+        <button className="player-image-area" onClick={tapImage} aria-label="効果音を鳴らす">
+          {imageUrl && <img className="player-image" src={imageUrl} alt="" draggable={false} />}
+        </button>
+      </div>
 
       <button
         className="player-nav player-nav--left pressable"

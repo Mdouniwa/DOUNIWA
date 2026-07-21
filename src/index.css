@@ -13,6 +13,19 @@
   --radius-lg: 24px;
   --radius-md: 16px;
 
+  /* 絵本の装丁っぽい厚み(表紙カード・テンプレカード等に使用) */
+  --shadow-book:
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 3px 0 rgba(78, 52, 46, 0.16),
+    0 14px 22px rgba(78, 52, 46, 0.22),
+    0 3px 7px rgba(78, 52, 46, 0.14);
+  --spine-gradient: linear-gradient(
+    90deg,
+    rgba(78, 52, 46, 0.4),
+    rgba(78, 52, 46, 0.12) 70%,
+    transparent
+  );
+
   /* セーフエリア(ノッチ・ホームバー) */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -37,9 +50,27 @@ body {
   font-family:
     'Hiragino Maru Gothic ProN', 'Hiragino Kaku Gothic ProN', 'BIZ UDGothic',
     system-ui, sans-serif;
-  background: var(--color-bg);
   color: var(--color-text);
   overscroll-behavior: none;
+  /* 紙質を感じさせる薄いテクスチャ(画像ファイル不使用、CSSのみ) */
+  background:
+    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.55) 0%, transparent 42%),
+    radial-gradient(circle at 85% 0%, rgba(255, 213, 130, 0.4) 0%, transparent 48%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(141, 110, 99, 0.035) 0px,
+      rgba(141, 110, 99, 0.035) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(141, 110, 99, 0.025) 0px,
+      rgba(141, 110, 99, 0.025) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    var(--color-bg);
   /* 子どもの長押しでの選択・コールアウトを防ぐ */
   -webkit-user-select: none;
   user-select: none;
@@ -69,11 +100,50 @@ img {
 
 /* 画面共通レイアウト */
 .screen {
+  position: relative;
   min-height: 100%;
   padding: calc(var(--safe-top) + 16px) calc(var(--safe-right) + 16px)
     calc(var(--safe-bottom) + 16px) calc(var(--safe-left) + 16px);
   display: flex;
   flex-direction: column;
+}
+
+/* 角の花飾り(絵本らしい統一感を出す簡易CSS装飾。操作の妨げにならないよう控えめ・非interactive) */
+.screen::before,
+.screen::after {
+  content: '';
+  position: absolute;
+  top: calc(var(--safe-top) + 6px);
+  width: 56px;
+  height: 56px;
+  background-repeat: no-repeat;
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.screen::before {
+  left: calc(var(--safe-left) + 4px);
+  background-image:
+    radial-gradient(circle, var(--color-primary) 0 5px, transparent 6px),
+    radial-gradient(circle, var(--color-accent) 0 4px, transparent 5px),
+    radial-gradient(circle, var(--color-green) 0 4px, transparent 5px);
+  background-position:
+    8px 8px,
+    26px 2px,
+    2px 30px;
+}
+
+.screen::after {
+  right: calc(var(--safe-right) + 4px);
+  background-image:
+    radial-gradient(circle, var(--color-primary) 0 5px, transparent 6px),
+    radial-gradient(circle, var(--color-accent) 0 4px, transparent 5px),
+    radial-gradient(circle, var(--color-green) 0 4px, transparent 5px);
+  background-position:
+    40px 8px,
+    22px 2px,
+    46px 30px;
 }
 
 /* ボタン押下の共通フィードバック */

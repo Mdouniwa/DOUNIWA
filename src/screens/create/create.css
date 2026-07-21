@@ -59,8 +59,8 @@
 
 .template-card {
   background: var(--color-card);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
+  border-radius: 16px 26px 26px 16px;
+  box-shadow: var(--shadow-book);
   border: 4px solid transparent;
   padding: 28px 16px;
   display: flex;
@@ -189,9 +189,9 @@
   align-self: center;
   width: min(100%, 420px);
   aspect-ratio: 4 / 3;
-  border-radius: var(--radius-lg);
+  border-radius: 16px 26px 26px 16px;
   overflow: hidden;
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-book);
   background: #fff3d6;
 }
 

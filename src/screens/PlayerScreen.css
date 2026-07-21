@@ -1,11 +1,30 @@
 .player-screen {
   position: fixed;
   inset: 0;
-  background: #1a1a1a;
+  /* 見開きの本を置いた机のような、温かみのある背景(画像ファイル不使用) */
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(255, 214, 153, 0.16), transparent 55%),
+    linear-gradient(180deg, #4a3222 0%, #2f2013 55%, #1c130b 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+}
+
+/* 木目っぽい質感の縞(ごく薄く) */
+.player-screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    100deg,
+    rgba(0, 0, 0, 0.05) 0px,
+    rgba(0, 0, 0, 0.05) 2px,
+    transparent 2px,
+    transparent 26px
+  );
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 .player-loading {
@@ -15,20 +34,58 @@
   gap: 16px;
 }
 
-.player-image-area {
+/* 本の見開きページを思わせる台紙 */
+.player-page-frame {
+  position: relative;
+  width: min(92vw, 900px);
+  height: min(84vh, 760px);
+  background: linear-gradient(135deg, #fffdf6, #fbf1da);
+  border-radius: 18px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 18px 46px rgba(0, 0, 0, 0.45),
+    0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 16px;
+  display: flex;
+  z-index: 1;
+}
+
+/* 本の綴じ目(背表紙のライン)を思わせる中央の縦の陰影 */
+.player-gutter {
   position: absolute;
-  inset: 0;
+  top: 5%;
+  bottom: 5%;
+  left: 50%;
+  width: 36px;
+  margin-left: -18px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(78, 52, 46, 0.16) 45%,
+    rgba(78, 52, 46, 0.24) 50%,
+    rgba(78, 52, 46, 0.16) 55%,
+    transparent
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.player-image-area {
+  position: relative;
+  flex: 1;
+  border-radius: 10px;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12px;
+  background: #fffaf0;
 }
 
 .player-image {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  border-radius: 12px;
+  border-radius: 8px;
 }
 
 /* 巨大ページ送りボタン(最小88x88px、画面端固定) */
