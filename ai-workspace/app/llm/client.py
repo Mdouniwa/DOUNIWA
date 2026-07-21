@@ -37,6 +37,7 @@ class ChatResult:
     model_name: str          # 内部モデル名（ルーティング名）
     content: str
     stubbed: bool            # True なら実LLMを呼ばず stub 応答
+    note: str = ""           # stub になった理由（未設定/接続失敗/content欠落 等）
     raw: dict | None = None  # デバッグ用の生レスポンス
 
 
@@ -59,7 +60,10 @@ class LLMClient:
                 "モデル %s のエンドポイント（環境変数 %s）が未設定のため stub 応答を返します。",
                 model.name, model.endpoint_env,
             )
-            return self._stub_result(model, messages)
+            return self._stub_result(
+                model, messages,
+                note=f"エンドポイント（環境変数 {model.endpoint_env}）が未設定",
+            )
 
         headers = {"Content-Type": "application/json"}
         api_key = model.resolve_api_key()
@@ -99,18 +103,27 @@ class LLMClient:
                     "モデル %s の呼び出しに失敗（%s）。stub 応答にフォールバックします。",
                     model.name, exc,
                 )
-                return self._stub_result(model, messages)
+                return self._stub_result(
+                    model, messages,
+                    note=f"応答に content がありません（リトライ後も欠落: {exc}）",
+                )
             except httpx.HTTPError as exc:
                 # 接続系の失敗はリトライしない（サーバー停止時に待ち時間を倍にしない）
                 logger.warning(
                     "モデル %s の呼び出しに失敗（%s）。stub 応答にフォールバックします。",
                     model.name, exc,
                 )
-                return self._stub_result(model, messages)
+                # ReadTimeout 等は str(exc) が空のことがあるため型名も含める
+                return self._stub_result(
+                    model, messages,
+                    note=f"HTTP呼び出しに失敗（{type(exc).__name__}: {exc}）",
+                )
         return self._stub_result(model, messages)  # 到達しない（型の整合用）
 
     @staticmethod
-    def _stub_result(model: ModelSpec, messages: list[ChatMessage]) -> ChatResult:
+    def _stub_result(
+        model: ModelSpec, messages: list[ChatMessage], note: str = ""
+    ) -> ChatResult:
         last_user = next(
             (m.content for m in reversed(messages) if m.role == "user"), ""
         )
@@ -118,4 +131,5 @@ class LLMClient:
             f"[stub:{model.name}] 実LLM未接続のためダミー応答です。"
             f" 受理した指示: {last_user[:200]}"
         )
-        return ChatResult(model_name=model.name, content=content, stubbed=True)
+        return ChatResult(model_name=model.name, content=content, stubbed=True,
+                          note=note)

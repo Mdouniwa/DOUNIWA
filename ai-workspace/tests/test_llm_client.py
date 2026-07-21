@@ -64,6 +64,7 @@ def test_stub_fallback_when_content_missing_twice(monkeypatch):
     result = LLMClient().chat(get_model("qwen-35b"), [ChatMessage("user", "hi")])
     assert len(calls) == 2
     assert result.stubbed is True
+    assert "content" in result.note  # stub の理由が note に残る
 
 
 def test_no_retry_on_connection_error(monkeypatch):
@@ -78,3 +79,11 @@ def test_no_retry_on_connection_error(monkeypatch):
     result = LLMClient().chat(get_model("qwen-35b"), [ChatMessage("user", "hi")])
     assert len(calls) == 1  # 接続エラーはリトライしない
     assert result.stubbed is True
+    assert "ConnectError" in result.note  # 例外の型名が note に残る
+
+
+def test_stub_note_when_endpoint_unset(monkeypatch):
+    monkeypatch.delenv("LOCAL_LLM_BASE_URL", raising=False)
+    result = LLMClient().chat(get_model("qwen-35b"), [ChatMessage("user", "hi")])
+    assert result.stubbed is True
+    assert "LOCAL_LLM_BASE_URL" in result.note  # 未設定の環境変数名が note に残る

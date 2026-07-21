@@ -129,7 +129,8 @@ def plan_coding_task(
         max_tokens=_PLANNING_MAX_TOKENS,
     )
     if chat.stubbed:
-        raise PlanRejected("計画生成LLMが未接続(stub)のため実行しません")
+        detail = f"。原因: {chat.note}" if chat.note else ""
+        raise PlanRejected(f"計画生成LLMが未接続(stub)のため実行しません{detail}")
     obj = _extract_json(chat.content)
     steps = _parse_steps(obj, registry) if obj is not None else None
     if steps is None:
