@@ -95,31 +95,42 @@ function feedbackDelay(
 
 // ------------------------------------------------------------- renderers
 
-/** 拍手: バンドパスノイズのマイクロバーストを不規則に多数重ねる */
+/**
+ * 拍手: 実際の拍手が持つ「複数周波数帯にまたがる広帯域の衝撃音」を再現するため、
+ * 中心周波数の異なる5本のバンドパスフィルターを並列にかけたノイズバーストを
+ * 同時に鳴らして混ぜ合わせる(単一帯域のフィルターだけでは出せない、パチッという
+ * 弾けるような質感になる)。複数人が微妙にタイミングをずらして叩いている重なりも維持。
+ */
 function renderClap(ctx: OfflineAudioContext) {
   const bus = reverbBus(ctx, 0.35, 0.9, 2.5);
-  const noise = noiseBuffer(ctx, 0.08);
-  // 「パチ」1回 = 短いノイズバースト×2〜3枚重ね
+  const noise = noiseBuffer(ctx, 0.09);
+  // 低域(手のひらの「パン」感)〜高域(指先の「チッ」感)まで5帯域を並列合成
+  const BANDS = [800, 1400, 2200, 3200, 4500];
+
   const clapAt = (t: number, loud: number) => {
-    for (let layer = 0; layer < 3; layer++) {
+    for (const freq of BANDS) {
       const src = ctx.createBufferSource();
       src.buffer = noise;
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass';
-      bp.frequency.value = 900 + Math.random() * 1600;
-      bp.Q.value = 1.2;
+      // 帯域ごとにわずかなゆらぎを持たせ、毎回微妙に違う音になるようにする
+      bp.frequency.value = freq * (0.92 + Math.random() * 0.16);
+      bp.Q.value = 2 + Math.random() * 1.5;
       const g = ctx.createGain();
-      const tt = t + layer * 0.006;
-      g.gain.setValueAtTime(0.0001, tt);
-      g.gain.exponentialRampToValueAtTime(loud * (0.5 + Math.random() * 0.5), tt + 0.003);
-      g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.05 + Math.random() * 0.03);
+      // アタックは3ms以下の急峻な立ち上がり(衝撃音らしさの核)
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(loud * (0.55 + Math.random() * 0.35), t + 0.0025);
+      // 高域ほど短く減衰し、低域はわずかに尾を引く(生の拍手に近い質感)
+      const decay = 0.04 + Math.random() * 0.02 + ((4500 - freq) / 4500) * 0.035;
+      g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
       src.connect(bp).connect(g).connect(bus.input);
-      src.start(tt);
+      src.start(t);
     }
   };
-  // 大勢の拍手: 0〜1.1秒にランダム配置
-  for (let i = 0; i < 26; i++) {
-    clapAt(0.02 + Math.random() * 1.05, 0.25 + Math.random() * 0.3);
+
+  // 大勢の拍手: 0〜1.1秒にランダム配置(タイミングのずれた複数バーストの重なり)
+  for (let i = 0; i < 22; i++) {
+    clapAt(0.02 + Math.random() * 1.05, 0.22 + Math.random() * 0.3);
   }
   // 先頭にそろった「パン!」で立ち上がりをはっきりさせる
   clapAt(0.01, 0.7);
