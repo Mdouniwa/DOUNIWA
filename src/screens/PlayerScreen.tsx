@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Navigate } from '../routes';
 import type { Book, Page, Settings } from '../types';
 import { getBook, getPagesForBook, getSettings } from '../lib/db';
@@ -11,6 +11,19 @@ import './PlayerScreen.css';
 interface PlayerScreenProps {
   bookId: string;
   navigate: Navigate;
+}
+
+/**
+ * ページめくりアニメーションの長さ。
+ * 見た目のためだけの値で、ページ送りロジック(index切替・ナレーション排他制御)には
+ * 影響しない。連打対策のデバウンスだけ、この時間に合わせて延長している。
+ */
+const PAGE_TURN_MS = 520;
+
+interface TurnLeaf {
+  key: number;
+  dir: 'next' | 'prev';
+  url: string;
 }
 
 /** 再生画面: フルスクリーン、巨大◀▶、画像タップで効果音、ナレーション自動再生 */
@@ -46,10 +59,35 @@ export function PlayerScreen({ bookId, navigate }: PlayerScreenProps) {
   const imageUrl = useBlobUrl(page?.imageBlob);
   const { stopAll } = usePagePlayer(page, settings);
 
-  // ページ送り(350msデバウンスで連打対策)
+  // ページめくりの見た目(ビジュアル専用レイヤー。ページ送りロジックには手を入れない)
+  const [turn, setTurn] = useState<TurnLeaf | null>(null);
+  const turnKeyRef = useRef(0);
+
+  // アニメーション中に差し替えられる元画像は、表示用hookのURLとはライフサイクルを
+  // 分離した自前のスナップショットを使う(差し替わった瞬間にrevokeされるのを避けるため)
+  useEffect(() => {
+    if (!turn) return;
+    const timer = window.setTimeout(() => setTurn(null), PAGE_TURN_MS);
+    return () => {
+      window.clearTimeout(timer);
+      URL.revokeObjectURL(turn.url);
+    };
+  }, [turn]);
+
+  // ページ送り(アニメーション時間に合わせてデバウンスし、めくり中の連打を無視する)
   const goTo = useDebouncedTap((delta: -1 | 1) => {
-    setIndex((i) => Math.max(0, Math.min(pages.length - 1, i + delta)));
-  }, 350);
+    const fromPage = pages[index];
+    const toIndex = Math.max(0, Math.min(pages.length - 1, index + delta));
+    if (toIndex !== index && fromPage) {
+      turnKeyRef.current += 1;
+      setTurn({
+        key: turnKeyRef.current,
+        dir: delta === 1 ? 'next' : 'prev',
+        url: URL.createObjectURL(fromPage.imageBlob),
+      });
+    }
+    setIndex(toIndex);
+  }, PAGE_TURN_MS);
 
   const exit = () => {
     stopAll();
@@ -83,6 +121,15 @@ export function PlayerScreen({ bookId, navigate }: PlayerScreenProps) {
         <button className="player-image-area" onClick={tapImage} aria-label="効果音を鳴らす">
           {imageUrl && <img className="player-image" src={imageUrl} alt="" draggable={false} />}
         </button>
+        {turn && (
+          <div
+            key={turn.key}
+            className={`player-turn-leaf player-turn-leaf--${turn.dir}`}
+            aria-hidden
+          >
+            <img src={turn.url} alt="" draggable={false} />
+          </div>
+        )}
       </div>
 
       <button
