@@ -87,3 +87,56 @@ def test_stub_note_when_endpoint_unset(monkeypatch):
     result = LLMClient().chat(get_model("qwen-35b"), [ChatMessage("user", "hi")])
     assert result.stubbed is True
     assert "LOCAL_LLM_BASE_URL" in result.note  # 未設定の環境変数名が note に残る
+
+
+# --- 思考モード抑制（chat_template_kwargs）とタイムアウト設定 ---------------
+
+
+def _capture_payload(monkeypatch) -> dict:
+    captured: dict = {}
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        captured["payload"] = json
+        captured["timeout"] = timeout
+        return _FakeResponse(_payload_with_content("ok"))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://fake:1/v1")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://fake:2/v1")
+    return captured
+
+
+def test_local_qwen_payload_disables_thinking(monkeypatch):
+    captured = _capture_payload(monkeypatch)
+    monkeypatch.delenv("QWEN_DISABLE_THINKING", raising=False)  # デフォルト有効
+    LLMClient().chat(get_model("qwen-35b"), [ChatMessage("user", "hi")])
+    assert captured["payload"]["chat_template_kwargs"] == {
+        "enable_thinking": False
+    }
+
+
+def test_cloud_payload_has_no_chat_template_kwargs(monkeypatch):
+    captured = _capture_payload(monkeypatch)
+    LLMClient().chat(get_model("cloud-claude"), [ChatMessage("user", "hi")])
+    assert "chat_template_kwargs" not in captured["payload"]
+
+
+def test_thinking_suppression_can_be_disabled_by_env(monkeypatch):
+    captured = _capture_payload(monkeypatch)
+    monkeypatch.setenv("QWEN_DISABLE_THINKING", "0")
+    LLMClient().chat(get_model("qwen-35b"), [ChatMessage("user", "hi")])
+    assert "chat_template_kwargs" not in captured["payload"]
+
+
+def test_timeout_default_is_180(monkeypatch):
+    captured = _capture_payload(monkeypatch)
+    monkeypatch.delenv("LLM_TIMEOUT_SECONDS", raising=False)
+    LLMClient().chat(get_model("qwen-35b"), [ChatMessage("user", "hi")])
+    assert captured["timeout"] == 180.0
+
+
+def test_timeout_overridable_by_env(monkeypatch):
+    captured = _capture_payload(monkeypatch)
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "45")
+    LLMClient().chat(get_model("qwen-35b"), [ChatMessage("user", "hi")])
+    assert captured["timeout"] == 45.0

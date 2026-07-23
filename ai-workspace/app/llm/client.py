@@ -10,15 +10,19 @@ LLMサーバーが無い環境でも end-to-end の一本線が動く。
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 
 import httpx
 
-from app.llm.models import ModelSpec
+from app.llm.models import ModelSpec, Provider
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TIMEOUT_S = 120.0
+# プロキシ側の backend timeout（120s）より長くしておく。これにより
+# 120s 超えの長考時はプロキシ側のタイムアウトエラーが先に返り、
+# 「どこで切れたか」がログに残る。.env の LLM_TIMEOUT_SECONDS で上書き可。
+DEFAULT_TIMEOUT_S = 180.0
 
 # mlx_lm.server は max_tokens 未指定だと 512 で打ち切る。
 # reasoning 系モデル（Qwen3.6 等）は思考だけで 512 を超え、
@@ -44,7 +48,11 @@ class ChatResult:
 class LLMClient:
     """ModelSpec を受けて OpenAI互換エンドポイントを呼ぶ薄いラッパー。"""
 
-    def __init__(self, timeout_s: float = DEFAULT_TIMEOUT_S) -> None:
+    def __init__(self, timeout_s: float | None = None) -> None:
+        if timeout_s is None:
+            timeout_s = float(
+                os.environ.get("LLM_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_S)
+            )
         self._timeout_s = timeout_s
 
     def chat(
@@ -76,6 +84,17 @@ class LLMClient:
             "temperature": temperature,
             "max_tokens": max_tokens or DEFAULT_MAX_TOKENS,
         }
+
+        # Qwen3.x 系は思考（reasoning）がデフォルト有効で、計画生成のような
+        # 定型タスクでも長考してタイムアウトの原因になる。chat_template_kwargs は
+        # mlx_lm.server 固有の拡張のため、ローカルLLM宛のときだけ付与する
+        # （cloud系はOpenAI互換外パラメータで弾かれる可能性がある）。
+        # gemma 等 enable_thinking を参照しないテンプレートでは単に無視される。
+        if (
+            model.provider is Provider.LOCAL_MLX
+            and os.environ.get("QWEN_DISABLE_THINKING", "1") != "0"
+        ):
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
 
         url = base_url.rstrip("/") + "/chat/completions"
         for attempt in (1, 2):
