@@ -23,6 +23,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from app.orchestrator.planner import Plan, PlanStep
 from app.tools.base import ToolRequest, ToolResult
@@ -178,17 +179,27 @@ def execute_plan(
     extra_params: dict | None = None,
     max_duration_s: float | None = None,
     previous_output: str | None = None,
+    on_step: Callable[[StepResult], None] | None = None,
 ) -> list[StepResult]:
     """計画のステップを順に実行し、全ステップ分の StepResult を返す。
 
     スキップされたステップも必ずリストに含める（実行されなかった事実を
-    記録に残すため）。
+    記録に残すため）。on_step はステップ確定（実行・スキップとも）の
+    たびに呼ばれる進捗通知用フック。フック内の例外は実行を止めない。
     """
     _ensure_file_logging()
     budget = max_duration_s if max_duration_s is not None else max_plan_duration_s()
     total = len(plan.steps)
     start = time.monotonic()
     results: list[StepResult] = []
+
+    def _emit(r: StepResult) -> None:
+        results.append(r)
+        if on_step is not None:
+            try:
+                on_step(r)
+            except Exception:
+                logger.exception("on_step フックで例外（実行は継続します）")
 
     logger.info("計画実行開始: %dステップ / タスク: %.100s", total, task_text)
     for i, step in enumerate(plan.steps, start=1):
@@ -209,7 +220,7 @@ def execute_plan(
         elapsed = time.monotonic() - start
         if elapsed > budget:
             reason = f"実行時間上限({budget:.0f}秒)を超過したため未実行"
-            results.append(StepResult(
+            _emit(StepResult(
                 index=i, tool=step.tool, action=step.action, params=params,
                 skipped=True, skip_reason=reason,
             ))
@@ -220,7 +231,7 @@ def execute_plan(
         invalid = sorted(n for n in refs if n < 1 or n >= i)
         if invalid:
             reason = f"不正なステップ参照 {{{{step{invalid[0]}.output}}}}（前のステップのみ参照可）"
-            results.append(StepResult(
+            _emit(StepResult(
                 index=i, tool=step.tool, action=step.action, params=params,
                 skipped=True, skip_reason=reason,
             ))
@@ -238,7 +249,7 @@ def execute_plan(
                     f"browser の取得結果（step{tainted[0]}）を別の browser "
                     "ステップに差し込むことはできません（インジェクション隔離）"
                 )
-                results.append(StepResult(
+                _emit(StepResult(
                     index=i, tool=step.tool, action=step.action, params=params,
                     skipped=True, skip_reason=reason,
                 ))
@@ -250,7 +261,7 @@ def execute_plan(
         )
         if blocked:
             reason = f"依存する step{blocked[0]} が失敗または未実行のため"
-            results.append(StepResult(
+            _emit(StepResult(
                 index=i, tool=step.tool, action=step.action, params=params,
                 skipped=True, skip_reason=reason,
             ))
@@ -259,7 +270,7 @@ def execute_plan(
 
         if previous_output is None and _references_previous(params):
             reason = "{{previous.output}} を参照しているが直前のタスク記録がないため"
-            results.append(StepResult(
+            _emit(StepResult(
                 index=i, tool=step.tool, action=step.action, params=params,
                 skipped=True, skip_reason=reason,
             ))
@@ -279,7 +290,7 @@ def execute_plan(
             ok=result.ok, stubbed=result.stubbed, output=result.output,
             duration_s=duration, started_at=started_at, data=result.data,
         )
-        results.append(record)
+        _emit(record)
         logger.info(
             "step %d/%d 終了: %s -> %s (%.1f秒)",
             i, total, step.label, record.status, duration,

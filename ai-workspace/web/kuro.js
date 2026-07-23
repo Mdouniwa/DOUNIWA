@@ -18,7 +18,10 @@ const KURO = {
   },
 
   statusText(t) {
-    return t === 'running' ? '実行中' : t === 'failed' ? '失敗' : '完了';
+    return t === 'running' ? '実行中'
+      : t === 'failed' ? '失敗'
+      : t === 'waiting_confirmation' ? '承認待ち'
+      : '完了';
   },
 
   // step の状態 -> バッジ表記（デザイン: exec / run / fail / stub）

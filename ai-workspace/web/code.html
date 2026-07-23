@@ -7,8 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="kuro.css?v=20260718e">
-<script src="kuro.js?v=20260718e"></script>
+<link rel="stylesheet" href="kuro.css?v=20260723a">
+<script src="kuro.js?v=20260723a"></script>
 </head>
 <body>
 <div class="app">
@@ -70,7 +70,7 @@
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const POLL_MS = 3000;
+  const POLL_MS = 1500;
   let running = false;
 
   function showError(msg) {
@@ -188,8 +188,11 @@
 
   function renderResult(run) {
     let html = '';
-    const statusText = run.status === 'done' ? '完了' : '失敗';
-    const cls = run.status === 'done' ? 'ok' : 'ng';
+    const statusText = run.status === 'running' ? '実行中…'
+      : run.status === 'waiting_confirmation' ? '承認待ち（下の確認パネルで操作してください）'
+      : run.status === 'done' ? '完了' : '失敗';
+    const cls = run.status === 'done' ? 'ok'
+      : run.status === 'failed' ? 'ng' : 'skip';
     let body = '<div style="padding:14px 18px">';
     body += '<div class="step-line">ステータス: <span class="' + cls + '">' + statusText + '</span>';
     if (run.record_id) {
@@ -294,16 +297,18 @@
     }
   }
 
+  // 状態を取得して描画関数に渡すだけ。描画内容の判断は renderResult 側。
+  // running 以外（done / failed / waiting_confirmation 等の停止状態）で必ず停止する。
   async function poll(runId) {
     for (;;) {
       await new Promise(r => setTimeout(r, POLL_MS));
       let run;
       try { run = await KURO.json('/api/nachtcode/' + runId); }
       catch { continue; }
+      renderResult(run);
       if (run.status === 'running') { $('state').textContent = '実行中…'; continue; }
       running = false;
       $('state').textContent = '';
-      renderResult(run);
       return;
     }
   }

@@ -221,3 +221,107 @@ def test_chat_without_session_id_issues_new_one(client):
     run = _wait_done(client, res["run_id"])
     record = client.get(f"/api/tasks/{run['record_id']}").json()
     assert record["session_id"] == res["session_id"]
+
+
+# --- Nacht Code: 進捗ポーリングと waiting_confirmation -----------------------
+
+
+def _wait_code_run(client: TestClient, run_id: str, timeout_s: float = 10.0) -> dict:
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        run = client.get(f"/api/nachtcode/{run_id}").json()
+        if run["status"] != "running":
+            return run
+        time.sleep(0.05)
+    raise AssertionError("nachtcode run が終了しませんでした")
+
+
+def _git_proj(tmp_path):
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / ".git").mkdir()
+    return proj
+
+
+def _fake_plan(monkeypatch, server_main):
+    from app.orchestrator.planner import Plan, PlanStep
+    step = PlanStep("browser", "open_page", {"url": "https://example.com"})
+    monkeypatch.setattr(
+        server_main, "plan_coding_task",
+        lambda *a, **k: Plan(steps=(step,), source="llm"),
+    )
+
+
+def test_nachtcode_needs_confirmation_ends_as_waiting_confirmation(
+    client, tmp_path, monkeypatch
+):
+    import app.server.main as server_main
+    from app.orchestrator.executor import StepResult
+
+    _fake_plan(monkeypatch, server_main)
+
+    def fake_execute_plan(plan, registry, task_text, on_step=None, **kw):
+        r = StepResult(
+            index=1, tool="browser", action="open_page", params={},
+            ok=True, output="ドメイン承認待ち",
+            data={"needs_confirmation": True, "kind": "domain",
+                  "domain": "example.com", "url": "https://example.com"},
+        )
+        if on_step:
+            on_step(r)
+        return [r]
+
+    monkeypatch.setattr(server_main, "execute_plan", fake_execute_plan)
+
+    res = client.post("/api/nachtcode",
+                      json={"dir": str(_git_proj(tmp_path)), "task": "見て"})
+    assert res.status_code == 200
+    run = _wait_code_run(client, res.json()["run_id"])
+    assert run["status"] == "waiting_confirmation"  # failed にしない
+    assert run["steps"][0]["data"]["needs_confirmation"] is True
+    assert run["plan"] and run["plan"][0]["tool"] == "browser"
+
+    # TASKS 画面が受け取る /api/tasks には未知の status を流さない
+    statuses = {t["status"] for t in client.get("/api/tasks").json()["tasks"]}
+    assert statuses <= {"running", "done", "failed"}
+
+
+def test_nachtcode_exposes_live_steps_while_running(client, tmp_path, monkeypatch):
+    import threading
+
+    import app.server.main as server_main
+    from app.orchestrator.executor import StepResult
+
+    _fake_plan(monkeypatch, server_main)
+    first_step_done = threading.Event()
+    release = threading.Event()
+
+    def fake_execute_plan(plan, registry, task_text, on_step=None, **kw):
+        r1 = StepResult(index=1, tool="browser", action="open_page",
+                        params={}, ok=True, output="1つ目完了", data={})
+        on_step(r1)
+        first_step_done.set()
+        release.wait(timeout=10)
+        r2 = StepResult(index=2, tool="browser", action="read_text",
+                        params={}, ok=True, output="2つ目完了", data={})
+        on_step(r2)
+        return [r1, r2]
+
+    monkeypatch.setattr(server_main, "execute_plan", fake_execute_plan)
+
+    res = client.post("/api/nachtcode",
+                      json={"dir": str(_git_proj(tmp_path)), "task": "見て"})
+    run_id = res.json()["run_id"]
+    assert first_step_done.wait(timeout=10)
+
+    # 実行中でも確定済みステップと計画が見える（ポーリング先の応答）
+    mid = client.get(f"/api/nachtcode/{run_id}").json()
+    assert mid["status"] == "running"
+    assert len(mid["steps"]) == 1
+    assert mid["steps"][0]["output"] == "1つ目完了"
+    assert mid["plan"]
+
+    release.set()
+    run = _wait_code_run(client, run_id)
+    assert run["status"] == "done"
+    assert len(run["steps"]) == 2

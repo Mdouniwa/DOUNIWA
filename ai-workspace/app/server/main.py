@@ -267,15 +267,21 @@ def get_task(record_id: str) -> dict:
 
 @dataclass
 class CodeRunEntry:
-    """Nacht Code（CODE画面）の実行中/完了タスク。"""
+    """Nacht Code（CODE画面）の実行中/完了タスク。
+
+    plan / steps は実行中の途中経過（UIポーリング用）。ステップが確定する
+    たびに追記され、完了後は保存済みレコードと同内容になる。
+    """
 
     run_id: str
     target_dir: str
     task_text: str
     started_at: str
-    status: str = "running"          # running | done | failed
+    status: str = "running"  # running | done | failed | waiting_confirmation
     error: str = ""
     record_id: str | None = None
+    plan: list = field(default_factory=list)
+    steps: list = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
 
@@ -296,11 +302,20 @@ def _execute_code_run(entry: CodeRunEntry, model: str | None) -> None:
     plan = None
     results = []
     error = ""
+
+    def _on_step(r) -> None:
+        # 途中経過をUIポーリングへ公開する（描画はフロント側の責務）
+        with entry.lock:
+            entry.steps.append(asdict(r))
+
     try:
         plan = plan_coding_task(
             _code_client, registry, entry.target_dir, entry.task_text, model
         )
-        results = execute_plan(plan, registry, entry.task_text)
+        with entry.lock:
+            entry.plan = [{"tool": s.tool, "action": s.action, "params": s.params}
+                          for s in plan.steps]
+        results = execute_plan(plan, registry, entry.task_text, on_step=_on_step)
     except PlanRejected as exc:
         error = str(exc)
     except Exception as exc:  # 実行スレッドを静かに死なせない
@@ -338,9 +353,18 @@ def _execute_code_run(entry: CodeRunEntry, model: str | None) -> None:
         step_results=[asdict(r) for r in results],
     )
     _store.save(record)
+    # 承認待ちで停止した run は failed ではなく waiting_confirmation にする
+    # （人間の承認チャネルの操作待ち。UIポーリングはここで停止する）。
+    waiting = not error and any(
+        (r.data or {}).get("needs_confirmation")
+        for r in results if not r.skipped
+    )
     with entry.lock:
         entry.record_id = record.id
-        entry.status = "failed" if (error or not ok) else "done"
+        if waiting:
+            entry.status = "waiting_confirmation"
+        else:
+            entry.status = "failed" if (error or not ok) else "done"
         entry.error = error
 
 
@@ -547,6 +571,10 @@ def get_nachtcode_run(run_id: str) -> dict:
             "task_text": entry.task_text,
             "started_at": entry.started_at,
             "record_id": entry.record_id,
+            # 実行中の途中経過。完了後は下のレコード由来の値で上書きされる
+            # （内容は同じで、summary が加わる）。
+            "plan": list(entry.plan),
+            "steps": list(entry.steps),
         }
     if result["record_id"]:
         record = _store.load_by_id(result["record_id"])

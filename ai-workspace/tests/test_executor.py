@@ -118,3 +118,31 @@ def test_unknown_action_is_reported_as_failure(tmp_path, monkeypatch):
     assert results[0].ok is False
     assert results[0].skipped is False
     assert "サポートしません" in results[0].output
+
+
+def test_on_step_called_for_each_result_including_skips(tmp_path, monkeypatch):
+    monkeypatch.setenv("EXECUTOR_LOG_DIR", str(tmp_path))
+    plan = _plan(
+        PlanStep("echo", "fail", {}),
+        PlanStep("echo", "say", {"text": "{{step1.output}}"}),  # 失敗に依存→スキップ
+        PlanStep("echo", "say", {"text": "independent"}),
+    )
+    seen = []
+    results = execute_plan(plan, _registry(), "テスト", on_step=seen.append)
+    assert seen == results  # 実行・スキップとも全件が確定順に通知される
+    assert [r.skipped for r in seen] == [False, True, False]
+
+
+def test_on_step_exception_does_not_stop_execution(tmp_path, monkeypatch):
+    monkeypatch.setenv("EXECUTOR_LOG_DIR", str(tmp_path))
+    plan = _plan(
+        PlanStep("echo", "say", {"text": "a"}),
+        PlanStep("echo", "say", {"text": "b"}),
+    )
+
+    def broken_hook(r):
+        raise RuntimeError("フック側のバグ")
+
+    results = execute_plan(plan, _registry(), "テスト", on_step=broken_hook)
+    assert len(results) == 2
+    assert all(r.ok for r in results)  # フックの例外は実行を止めない
