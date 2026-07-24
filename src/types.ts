@@ -14,17 +14,22 @@ export interface Book {
   createdAt: number;
   updatedAt: number;
   lastOpenedAt: number;
+  // 選んだ5つのアイコンキーワード(選択順)。旧・写真絵本には無いためoptional
+  iconKeywords?: string[];
 }
 
 export interface Page {
   id: string;
   bookId: string;
-  imageBlob: Blob; // 長辺1500px, JPEG quality 0.82
+  imageBlob: Blob; // AI生成挿絵(長辺1500px JPEG)。旧・写真絵本では家族写真
   thumbBlob: Blob; // 長辺300px
-  captionText: string;
+  captionText: string; // AI生成した物語文。旧・写真絵本では親の手入力
   audioBlob: Blob | null;
   audioMime: string | null;
   soundEffect: SoundEffect | null;
+  // 音声の出自: 'generated'=AI生成 / 'recorded'=子どもの録音で上書き。
+  // 旧データには無いためoptional(未設定でも audioBlob があればそれを再生する)
+  narrationSource?: 'generated' | 'recorded';
 }
 
 export interface Settings {

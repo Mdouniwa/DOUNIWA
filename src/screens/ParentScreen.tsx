@@ -192,7 +192,13 @@ function BookEditor({ book, onBookChange, onDeleted }: BookEditorProps) {
                   表紙にする
                 </button>
                 <span className="parent-page-meta">
-                  {page.audioBlob ? '🎤 録音あり' : page.captionText.trim() ? '💬 TTS' : '🔇 無音'}
+                  {page.audioBlob
+                    ? page.narrationSource === 'recorded'
+                      ? '🎤 録音あり'
+                      : '✨ 生成音声'
+                    : page.captionText.trim()
+                      ? '💬 TTS'
+                      : '🔇 無音'}
                 </span>
               </div>
             </div>

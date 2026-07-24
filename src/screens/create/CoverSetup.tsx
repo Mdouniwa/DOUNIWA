@@ -33,6 +33,8 @@ export function CoverSetup({ draft, onChange, onSaved }: CoverSetupProps) {
         audioBlob: p.audioBlob,
         audioMime: p.audioMime,
         soundEffect: p.soundEffect,
+        // 未設定(旧経路)は録音があれば録音扱い、無ければ生成扱いにしておく
+        narrationSource: p.narrationSource ?? (p.audioBlob ? 'recorded' : 'generated'),
       }));
       const book: Book = {
         id: bookId,
@@ -43,6 +45,7 @@ export function CoverSetup({ draft, onChange, onSaved }: CoverSetupProps) {
         createdAt: now,
         updatedAt: now,
         lastOpenedAt: now,
+        iconKeywords: draft.iconKeywords,
       };
       await createBookWithPages(book, pages);
       playSound('success');
@@ -69,7 +72,7 @@ export function CoverSetup({ draft, onChange, onSaved }: CoverSetupProps) {
         />
       </label>
 
-      <p className="create-step-hint">ひょうしの しゃしんを えらんでね</p>
+      <p className="create-step-hint">ひょうしの えを えらんでね</p>
       <div className="cover-grid">
         {draft.pages.map((p) => (
           <button
