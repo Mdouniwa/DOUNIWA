@@ -1,0 +1,12 @@
+[
+  {
+    "date": "2026-07-25",
+    "scope": "app",
+    "macrostructure": "existing app screens (Home grid / Player spread / Create wizard / Parent list)",
+    "theme": "custom",
+    "theme_axes": "light / rounded-sans / chromatic-other (rose-pink ~350)",
+    "vibe": "花畑・パステル・お姫さま・きらめき",
+    "enrichment": "Tier-A CSS art (corner flowers, star sparkles)",
+    "brief": "しゃべるえほん · 子ども向け絵本メーカーPWA 全面リデザイン"
+  }
+]

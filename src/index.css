@@ -1,28 +1,43 @@
+/* Hallmark · redesign (multi-page) · design-system: design.md · designed-as-app
+ * theme: custom · vibe: "花畑・パステル・お姫さま・きらめき"
+ * paper: oklch(96.5% 0.018 340) · accent: oklch(63% 0.16 350)
+ * display: Hiragino Maru Gothic (system, single-family by design) · axes: light / rounded-sans / chromatic-other (rose-pink ~350°)
+ * studied: no · context: user-provided · genre: playful
+ */
 :root {
-  /* 子ども向けの明るいパレット */
-  --color-bg: #fff8e1;
-  --color-primary: #ffb300;
-  --color-primary-dark: #e5732a;
-  --color-accent: #42a5f5;
-  --color-green: #66bb6a;
-  --color-red: #ef5350;
-  --color-text: #4e342e;
-  --color-text-light: #8d6e63;
-  --color-card: #ffffff;
-  --shadow-card: 0 4px 12px rgba(78, 52, 46, 0.15);
+  /* お姫さま×花×パステルのパレット */
+  --color-bg: oklch(96.5% 0.018 340);
+  --color-bg-2: oklch(93.5% 0.028 330);
+  --color-primary: oklch(63% 0.16 350);
+  --color-primary-dark: oklch(46% 0.14 350);
+  --color-accent: oklch(58% 0.12 300);
+  --color-green: oklch(56% 0.09 165);
+  --color-red: oklch(56% 0.17 15);
+  --color-gold: oklch(74% 0.11 85);
+  --color-text: oklch(30% 0.04 345);
+  --color-text-light: oklch(50% 0.05 345);
+  --color-card: oklch(99% 0.006 340);
+  --color-focus: oklch(62% 0.19 350);
+
+  /* 花びら装飾用(飾り専用・UIの文字色に使わない) */
+  --petal-pink: oklch(80% 0.09 350);
+  --petal-lavender: oklch(78% 0.08 300);
+  --petal-mint: oklch(84% 0.06 165);
+
+  --shadow-card: 0 4px 14px oklch(46% 0.14 350 / 0.15);
   --radius-lg: 24px;
   --radius-md: 16px;
 
   /* 絵本の装丁っぽい厚み(表紙カード・テンプレカード等に使用) */
   --shadow-book:
-    0 1px 0 rgba(255, 255, 255, 0.55) inset,
-    0 3px 0 rgba(78, 52, 46, 0.16),
-    0 14px 22px rgba(78, 52, 46, 0.22),
-    0 3px 7px rgba(78, 52, 46, 0.14);
+    0 1px 0 oklch(100% 0 0 / 0.6) inset,
+    0 3px 0 oklch(35% 0.08 340 / 0.16),
+    0 14px 22px oklch(35% 0.08 340 / 0.2),
+    0 3px 7px oklch(35% 0.08 340 / 0.13);
   --spine-gradient: linear-gradient(
     90deg,
-    rgba(78, 52, 46, 0.4),
-    rgba(78, 52, 46, 0.12) 70%,
+    oklch(35% 0.08 340 / 0.38),
+    oklch(35% 0.08 340 / 0.12) 70%,
     transparent
   );
 
@@ -52,25 +67,22 @@ body {
     system-ui, sans-serif;
   color: var(--color-text);
   overscroll-behavior: none;
-  /* 紙質を感じさせる薄いテクスチャ(画像ファイル不使用、CSSのみ) */
-  background:
-    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.55) 0%, transparent 42%),
-    radial-gradient(circle at 85% 0%, rgba(255, 213, 130, 0.4) 0%, transparent 48%),
-    repeating-linear-gradient(
-      0deg,
-      rgba(141, 110, 99, 0.035) 0px,
-      rgba(141, 110, 99, 0.035) 1px,
-      transparent 1px,
-      transparent 3px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      rgba(141, 110, 99, 0.025) 0px,
-      rgba(141, 110, 99, 0.025) 1px,
-      transparent 1px,
-      transparent 3px
-    ),
-    var(--color-bg);
+  /* パステルの霞 + 散らばる花びらドット(画像ファイル不使用、CSSのみ) */
+  background-image:
+    radial-gradient(circle at 15% 6%, oklch(90% 0.05 350 / 0.5) 0%, transparent 42%),
+    radial-gradient(circle at 88% 2%, oklch(90% 0.05 300 / 0.45) 0%, transparent 46%),
+    radial-gradient(circle at 82% 96%, oklch(92% 0.045 165 / 0.4) 0%, transparent 42%),
+    radial-gradient(circle at 8% 90%, oklch(92% 0.05 85 / 0.35) 0%, transparent 38%),
+    radial-gradient(circle 2.5px at 14px 18px, oklch(84% 0.07 350 / 0.35) 0 2.5px, transparent 2.5px),
+    radial-gradient(circle 2px at 64px 52px, oklch(82% 0.06 300 / 0.3) 0 2px, transparent 2px);
+  background-size:
+    auto,
+    auto,
+    auto,
+    auto,
+    96px 88px,
+    118px 106px;
+  background-color: var(--color-bg);
   /* 子どもの長押しでの選択・コールアウトを防ぐ */
   -webkit-user-select: none;
   user-select: none;
@@ -93,6 +105,12 @@ button {
   color: inherit;
 }
 
+/* キーボード操作時のフォーカスリング(即時表示・アニメーションなし) */
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
 img {
   max-width: 100%;
   display: block;
@@ -108,42 +126,41 @@ img {
   flex-direction: column;
 }
 
-/* 角の花飾り(絵本らしい統一感を出す簡易CSS装飾。操作の妨げにならないよう控えめ・非interactive) */
+/* 角の花飾り: 5枚花びらの小花+金の芯(操作の妨げにならないよう控えめ・非interactive) */
 .screen::before,
 .screen::after {
   content: '';
   position: absolute;
   top: calc(var(--safe-top) + 6px);
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   background-repeat: no-repeat;
-  opacity: 0.4;
+  opacity: 0.55;
   pointer-events: none;
   z-index: 0;
+  /* 大きい花(ピンク5弁+金芯) と 小さい花(ラベンダー4弁+金芯) と ミントの葉 */
+  background-image:
+    radial-gradient(circle 7px at 19px 9px, var(--petal-pink) 0 7px, transparent 7px),
+    radial-gradient(circle 7px at 31px 17px, var(--petal-pink) 0 7px, transparent 7px),
+    radial-gradient(circle 7px at 27px 31px, var(--petal-pink) 0 7px, transparent 7px),
+    radial-gradient(circle 7px at 11px 31px, var(--petal-pink) 0 7px, transparent 7px),
+    radial-gradient(circle 7px at 7px 17px, var(--petal-pink) 0 7px, transparent 7px),
+    radial-gradient(circle 4.5px at 19px 20px, var(--color-gold) 0 4.5px, transparent 4.5px),
+    radial-gradient(circle 4px at 50px 36px, var(--petal-lavender) 0 4px, transparent 4px),
+    radial-gradient(circle 4px at 56px 42px, var(--petal-lavender) 0 4px, transparent 4px),
+    radial-gradient(circle 4px at 50px 48px, var(--petal-lavender) 0 4px, transparent 4px),
+    radial-gradient(circle 4px at 44px 42px, var(--petal-lavender) 0 4px, transparent 4px),
+    radial-gradient(circle 2.5px at 50px 42px, var(--color-gold) 0 2.5px, transparent 2.5px),
+    radial-gradient(ellipse 5px 3px at 38px 52px, var(--petal-mint) 0 100%, transparent 100%);
 }
 
 .screen::before {
   left: calc(var(--safe-left) + 4px);
-  background-image:
-    radial-gradient(circle, var(--color-primary) 0 5px, transparent 6px),
-    radial-gradient(circle, var(--color-accent) 0 4px, transparent 5px),
-    radial-gradient(circle, var(--color-green) 0 4px, transparent 5px);
-  background-position:
-    8px 8px,
-    26px 2px,
-    2px 30px;
 }
 
 .screen::after {
   right: calc(var(--safe-right) + 4px);
-  background-image:
-    radial-gradient(circle, var(--color-primary) 0 5px, transparent 6px),
-    radial-gradient(circle, var(--color-accent) 0 4px, transparent 5px),
-    radial-gradient(circle, var(--color-green) 0 4px, transparent 5px);
-  background-position:
-    40px 8px,
-    22px 2px,
-    46px 30px;
+  transform: scaleX(-1);
 }
 
 /* ボタン押下の共通フィードバック */
@@ -152,4 +169,15 @@ img {
 }
 .pressable:active {
   transform: scale(0.95);
+}
+
+/* モーション低減設定時はアニメーションを実質停止する */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

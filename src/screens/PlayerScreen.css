@@ -1,29 +1,35 @@
 .player-screen {
   position: fixed;
   inset: 0;
-  /* 見開きの本を置いた机のような、温かみのある背景(画像ファイル不使用) */
+  /* 宵の城の空。読み聞かせの雰囲気を出す深いプラム〜すみれのグラデーション(画像ファイル不使用) */
   background:
-    radial-gradient(ellipse at 50% -8%, rgba(255, 214, 153, 0.16), transparent 55%),
-    linear-gradient(180deg, #4a3222 0%, #2f2013 55%, #1c130b 100%);
+    radial-gradient(ellipse at 50% -8%, oklch(70% 0.08 330 / 0.2), transparent 55%),
+    linear-gradient(
+      180deg,
+      oklch(33% 0.07 315) 0%,
+      oklch(25% 0.06 305) 55%,
+      oklch(18% 0.05 295) 100%
+    );
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
 }
 
-/* 木目っぽい質感の縞(ごく薄く) */
+/* 夜空のきらめき(小さな星のドット・ごく薄く) */
 .player-screen::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: repeating-linear-gradient(
-    100deg,
-    rgba(0, 0, 0, 0.05) 0px,
-    rgba(0, 0, 0, 0.05) 2px,
-    transparent 2px,
-    transparent 26px
-  );
-  opacity: 0.5;
+  background-image:
+    radial-gradient(circle 1.5px at 22px 34px, oklch(92% 0.03 85 / 0.55) 0 1.5px, transparent 1.5px),
+    radial-gradient(circle 1px at 78px 12px, oklch(95% 0.02 300 / 0.45) 0 1px, transparent 1px),
+    radial-gradient(circle 1px at 130px 62px, oklch(92% 0.03 85 / 0.35) 0 1px, transparent 1px);
+  background-size:
+    170px 140px,
+    150px 120px,
+    190px 160px;
+  opacity: 0.6;
   pointer-events: none;
 }
 
@@ -39,12 +45,12 @@
   position: relative;
   width: min(92vw, 900px);
   height: min(84vh, 760px);
-  background: linear-gradient(135deg, #fffdf6, #fbf1da);
+  background: linear-gradient(135deg, oklch(99% 0.008 340), oklch(95% 0.022 335));
   border-radius: 18px;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.7) inset,
-    0 18px 46px rgba(0, 0, 0, 0.45),
-    0 4px 12px rgba(0, 0, 0, 0.3);
+    0 1px 0 oklch(100% 0 0 / 0.7) inset,
+    0 18px 46px oklch(12% 0.04 300 / 0.5),
+    0 4px 12px oklch(12% 0.04 300 / 0.35);
   padding: 16px;
   display: flex;
   z-index: 1;
@@ -63,9 +69,9 @@
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(78, 52, 46, 0.16) 45%,
-    rgba(78, 52, 46, 0.24) 50%,
-    rgba(78, 52, 46, 0.16) 55%,
+    oklch(35% 0.08 340 / 0.14) 45%,
+    oklch(35% 0.08 340 / 0.22) 50%,
+    oklch(35% 0.08 340 / 0.14) 55%,
     transparent
   );
   pointer-events: none;
@@ -80,7 +86,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fffaf0;
+  background: oklch(97.5% 0.012 340);
 }
 
 .player-image {
@@ -101,7 +107,7 @@
   inset: 16px;
   border-radius: 10px;
   overflow: hidden;
-  background: #fffaf0;
+  background: oklch(97.5% 0.012 340);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -133,7 +139,7 @@
 }
 
 .player-turn-leaf--next::after {
-  background: linear-gradient(90deg, rgba(60, 40, 20, 0.45), transparent 55%);
+  background: linear-gradient(90deg, oklch(28% 0.07 330 / 0.45), transparent 55%);
   animation: page-turn-shadow 520ms cubic-bezier(0.45, 0, 0.2, 1) forwards;
 }
 
@@ -143,7 +149,7 @@
 }
 
 .player-turn-leaf--prev::after {
-  background: linear-gradient(270deg, rgba(60, 40, 20, 0.45), transparent 55%);
+  background: linear-gradient(270deg, oklch(28% 0.07 330 / 0.45), transparent 55%);
   animation: page-turn-shadow 520ms cubic-bezier(0.45, 0, 0.2, 1) forwards;
 }
 
@@ -188,7 +194,7 @@
   min-height: 88px;
   font-size: 44px;
   color: #fff;
-  background: rgba(255, 179, 0, 0.85);
+  background: oklch(63% 0.16 350 / 0.88);
   box-shadow: var(--shadow-card);
   z-index: 2;
 }
@@ -242,6 +248,6 @@
 }
 
 .player-dot--current {
-  background: #ffb300;
+  background: var(--color-gold);
   transform: scale(1.3);
 }

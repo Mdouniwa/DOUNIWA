@@ -21,7 +21,7 @@
 
 .icon-slot--empty {
   height: 88px;
-  border: 3px dashed rgba(78, 52, 46, 0.2);
+  border: 3px dashed oklch(46% 0.14 350 / 0.18);
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
@@ -42,7 +42,7 @@
 }
 
 .icon-slot--empty .icon-slot-num {
-  background: rgba(78, 52, 46, 0.2);
+  background: oklch(46% 0.14 350 / 0.18);
 }
 
 .icon-slot-emoji {
@@ -67,7 +67,7 @@
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: rgba(66, 165, 245, 0.14);
+  background: oklch(58% 0.12 300 / 0.14);
   color: var(--color-accent);
   font-size: 16px;
   font-weight: bold;
@@ -102,7 +102,7 @@
 
 .icon-cell--selected {
   border-color: var(--color-primary);
-  background: rgba(255, 179, 0, 0.14);
+  background: oklch(63% 0.16 350 / 0.12);
 }
 
 .icon-cell:disabled {

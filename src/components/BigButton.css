@@ -2,11 +2,14 @@
   min-height: 72px;
   min-width: 88px;
   padding: 16px 32px;
-  border-radius: var(--radius-lg);
+  /* お姫さまテーマ: ふっくらしたピル形 + 内側上端のつや */
+  border-radius: 999px;
   font-size: 24px;
   font-weight: bold;
   color: #fff;
-  box-shadow: var(--shadow-card);
+  box-shadow:
+    0 1px 0 oklch(100% 0 0 / 0.35) inset,
+    var(--shadow-card);
   display: inline-flex;
   align-items: center;
   justify-content: center;
