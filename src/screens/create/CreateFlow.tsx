@@ -25,6 +25,7 @@ export function CreateFlow({ navigate }: CreateFlowProps) {
     pages: [],
     coverPageId: null,
     title: '',
+    iconKeywords: [],
   });
 
   const goHome = () => navigate({ name: 'home' });

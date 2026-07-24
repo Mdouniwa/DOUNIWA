@@ -16,7 +16,9 @@ export interface Draft {
   pages: DraftPage[];
   coverPageId: string | null;
   title: string;
+  iconKeywords: string[]; // 選んだ5つのアイコンキーワード(選択順)
 }
 
+// 旧・写真フロー用(Phase 6で該当ステップと共に削除予定)
 export const MIN_PHOTOS = 5;
 export const MAX_PHOTOS = 10;

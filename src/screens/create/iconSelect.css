@@ -1,0 +1,137 @@
+.icon-step {
+  gap: 12px;
+}
+
+/* 選択済みスロット */
+.icon-slots {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.icon-slot {
+  position: relative;
+  width: 68px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.icon-slot--empty {
+  height: 88px;
+  border: 3px dashed rgba(78, 52, 46, 0.2);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-slot-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-slot--empty .icon-slot-num {
+  background: rgba(78, 52, 46, 0.2);
+}
+
+.icon-slot-emoji {
+  font-size: 40px;
+  line-height: 1;
+  background: var(--color-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-slot-move {
+  display: flex;
+  gap: 4px;
+}
+
+.icon-move {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: rgba(66, 165, 245, 0.14);
+  color: var(--color-accent);
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.icon-move:disabled {
+  opacity: 0.3;
+}
+
+/* アイコンプール */
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 10px;
+  flex: 1;
+  align-content: start;
+  overflow-y: auto;
+}
+
+.icon-cell {
+  position: relative;
+  background: var(--color-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  border: 3px solid transparent;
+  padding: 10px 4px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.icon-cell--selected {
+  border-color: var(--color-primary);
+  background: rgba(255, 179, 0, 0.14);
+}
+
+.icon-cell:disabled {
+  opacity: 0.4;
+}
+
+.icon-cell-emoji {
+  font-size: 40px;
+  line-height: 1;
+}
+
+.icon-cell-label {
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.icon-cell-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 16px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-card);
+}
