@@ -9,6 +9,8 @@ export interface DraftPage {
   audioBlob: Blob | null;
   audioMime: string | null;
   soundEffect: SoundEffect | null;
+  // 音声の出自: AI生成か、子どもの録音で上書きされたか
+  narrationSource?: 'generated' | 'recorded';
 }
 
 export interface Draft {

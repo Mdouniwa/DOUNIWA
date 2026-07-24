@@ -1,25 +1,27 @@
 import { useState } from 'react';
 import type { Navigate } from '../../routes';
-import type { Theme } from '../../types';
-import type { Draft } from './draft';
+import type { Draft, DraftPage } from './draft';
+import { categoryToTheme, iconByKeyword } from '../../lib/icons';
 import { ProgressDots } from '../../components/ProgressDots';
-import { TemplateSelect } from './TemplateSelect';
-import { PhotoPick } from './PhotoPick';
-import { PageOrder } from './PageOrder';
+import { IconSelect } from './IconSelect';
+import { Generating } from './Generating';
 import { RecordPages } from './RecordPages';
 import { CoverSetup } from './CoverSetup';
 import { Done } from './Done';
 import './create.css';
 
-const TOTAL_STEPS = 6;
+type Step = 'icons' | 'generating' | 'review' | 'cover' | 'done';
+
+// 進捗ドットを表示する対話ステップ(生成中・完了は除く)
+const DOT_STEPS: Step[] = ['icons', 'review', 'cover'];
 
 interface CreateFlowProps {
   navigate: Navigate;
 }
 
-/** 作成フロー: 1画面1タスク、進捗ドット付きのステップウィザード */
+/** 作成フロー: アイコン選択 → AI生成 → できあがり確認 → 表紙 → 完了 */
 export function CreateFlow({ navigate }: CreateFlowProps) {
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState<Step>('icons');
   const [draft, setDraft] = useState<Draft>({
     theme: 'odekake',
     pages: [],
@@ -29,63 +31,75 @@ export function CreateFlow({ navigate }: CreateFlowProps) {
   });
 
   const goHome = () => navigate({ name: 'home' });
-  const next = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
+  const updateDraft = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
+
   const back = () => {
-    if (step === 0) {
-      goHome();
-    } else {
-      setStep((s) => s - 1);
+    switch (step) {
+      case 'icons':
+        goHome();
+        break;
+      case 'review':
+        setStep('icons');
+        break;
+      case 'cover':
+        setStep('review');
+        break;
+      default:
+        break;
     }
   };
 
-  const updateDraft = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
+  // 生成完了: 物語・ページを下書きに取り込み、テーマ・表紙を初期設定
+  const handleGenerated = (title: string, pages: DraftPage[]) => {
+    const firstIcon = iconByKeyword(draft.iconKeywords[0]);
+    updateDraft({
+      title,
+      pages,
+      coverPageId: pages[0]?.id ?? null,
+      theme: firstIcon ? categoryToTheme(firstIcon.category) : 'odekake',
+    });
+    setStep('review');
+  };
+
+  const showHeader = step === 'icons' || step === 'review' || step === 'cover';
 
   return (
     <div className="screen create-screen">
-      {step < TOTAL_STEPS - 1 && (
+      {showHeader && (
         <header className="create-header">
           <button className="create-back pressable" onClick={back}>
             ←もどる
           </button>
-          <ProgressDots total={TOTAL_STEPS} current={step} />
+          <ProgressDots total={DOT_STEPS.length} current={DOT_STEPS.indexOf(step)} />
           <span className="create-header-spacer" />
         </header>
       )}
 
-      {step === 0 && (
-        <TemplateSelect
-          theme={draft.theme}
-          onSelect={(theme: Theme) => {
-            updateDraft({ theme });
-            next();
-          }}
+      {step === 'icons' && (
+        <IconSelect
+          selected={draft.iconKeywords}
+          onChange={(iconKeywords) => updateDraft({ iconKeywords })}
+          onNext={() => setStep('generating')}
         />
       )}
-      {step === 1 && (
-        <PhotoPick
-          pages={draft.pages}
-          onChange={(pages) => updateDraft({ pages })}
-          onNext={next}
+      {step === 'generating' && (
+        <Generating
+          iconKeywords={draft.iconKeywords}
+          onDone={handleGenerated}
+          onBack={() => setStep('icons')}
         />
       )}
-      {step === 2 && (
-        <PageOrder
-          pages={draft.pages}
-          onChange={(pages) => updateDraft({ pages })}
-          onNext={next}
-        />
-      )}
-      {step === 3 && (
+      {step === 'review' && (
         <RecordPages
           pages={draft.pages}
           onChange={(pages) => updateDraft({ pages })}
-          onNext={next}
+          onNext={() => setStep('cover')}
         />
       )}
-      {step === 4 && (
-        <CoverSetup draft={draft} onChange={updateDraft} onSaved={next} />
+      {step === 'cover' && (
+        <CoverSetup draft={draft} onChange={updateDraft} onSaved={() => setStep('done')} />
       )}
-      {step === 5 && <Done onHome={goHome} />}
+      {step === 'done' && <Done onHome={goHome} />}
     </div>
   );
 }

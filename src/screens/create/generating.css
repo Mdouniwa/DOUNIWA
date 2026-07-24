@@ -1,0 +1,82 @@
+.generating-step {
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  text-align: center;
+}
+
+/* 選んだアイコンが中心の周りをくるくる回る */
+.generating-orbit {
+  position: relative;
+  width: 260px;
+  height: 260px;
+  animation: generating-spin 6s linear infinite;
+}
+
+@keyframes generating-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.generating-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 64px;
+  animation: generating-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes generating-pulse {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.25);
+  }
+}
+
+.generating-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: -22px;
+  width: 44px;
+  height: 44px;
+  font-size: 40px;
+  transform-origin: center;
+}
+
+.generating-message {
+  font-size: 24px;
+  font-weight: bold;
+  color: var(--color-primary-dark);
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+}
+
+.generating-hint {
+  font-size: 18px;
+  color: var(--color-text-light);
+}
+
+/* エラー時 */
+.generating-error-emoji {
+  font-size: 96px;
+}
+
+.generating-error-text {
+  font-size: 22px;
+  color: var(--color-text);
+}
+
+.generating-error-actions {
+  display: flex;
+  gap: 16px;
+}
