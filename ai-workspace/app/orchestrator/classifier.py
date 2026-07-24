@@ -60,7 +60,7 @@ _RULES: list[tuple[tuple[str, ...], Classification]] = [
     ),
     (
         ("ブラウザ", "browser", "webページ", "スクレイピング", "クリックして"),
-        Classification(TaskKind.BROWSER, "browser", "open_url"),
+        Classification(TaskKind.BROWSER, "browser", "fetch_page"),
     ),
 ]
 

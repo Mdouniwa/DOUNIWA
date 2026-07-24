@@ -10,15 +10,19 @@ LLMサーバーが無い環境でも end-to-end の一本線が動く。
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 
 import httpx
 
-from app.llm.models import ModelSpec
+from app.llm.models import ModelSpec, Provider
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TIMEOUT_S = 120.0
+# プロキシ側の backend timeout（120s）より長くしておく。これにより
+# 120s 超えの長考時はプロキシ側のタイムアウトエラーが先に返り、
+# 「どこで切れたか」がログに残る。.env の LLM_TIMEOUT_SECONDS で上書き可。
+DEFAULT_TIMEOUT_S = 180.0
 
 # mlx_lm.server は max_tokens 未指定だと 512 で打ち切る。
 # reasoning 系モデル（Qwen3.6 等）は思考だけで 512 を超え、
@@ -37,13 +41,18 @@ class ChatResult:
     model_name: str          # 内部モデル名（ルーティング名）
     content: str
     stubbed: bool            # True なら実LLMを呼ばず stub 応答
+    note: str = ""           # stub になった理由（未設定/接続失敗/content欠落 等）
     raw: dict | None = None  # デバッグ用の生レスポンス
 
 
 class LLMClient:
     """ModelSpec を受けて OpenAI互換エンドポイントを呼ぶ薄いラッパー。"""
 
-    def __init__(self, timeout_s: float = DEFAULT_TIMEOUT_S) -> None:
+    def __init__(self, timeout_s: float | None = None) -> None:
+        if timeout_s is None:
+            timeout_s = float(
+                os.environ.get("LLM_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_S)
+            )
         self._timeout_s = timeout_s
 
     def chat(
@@ -59,7 +68,10 @@ class LLMClient:
                 "モデル %s のエンドポイント（環境変数 %s）が未設定のため stub 応答を返します。",
                 model.name, model.endpoint_env,
             )
-            return self._stub_result(model, messages)
+            return self._stub_result(
+                model, messages,
+                note=f"エンドポイント（環境変数 {model.endpoint_env}）が未設定",
+            )
 
         headers = {"Content-Type": "application/json"}
         api_key = model.resolve_api_key()
@@ -72,6 +84,17 @@ class LLMClient:
             "temperature": temperature,
             "max_tokens": max_tokens or DEFAULT_MAX_TOKENS,
         }
+
+        # Qwen3.x 系は思考（reasoning）がデフォルト有効で、計画生成のような
+        # 定型タスクでも長考してタイムアウトの原因になる。chat_template_kwargs は
+        # mlx_lm.server 固有の拡張のため、ローカルLLM宛のときだけ付与する
+        # （cloud系はOpenAI互換外パラメータで弾かれる可能性がある）。
+        # gemma 等 enable_thinking を参照しないテンプレートでは単に無視される。
+        if (
+            model.provider is Provider.LOCAL_MLX
+            and os.environ.get("QWEN_DISABLE_THINKING", "1") != "0"
+        ):
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
 
         url = base_url.rstrip("/") + "/chat/completions"
         for attempt in (1, 2):
@@ -99,18 +122,27 @@ class LLMClient:
                     "モデル %s の呼び出しに失敗（%s）。stub 応答にフォールバックします。",
                     model.name, exc,
                 )
-                return self._stub_result(model, messages)
+                return self._stub_result(
+                    model, messages,
+                    note=f"応答に content がありません（リトライ後も欠落: {exc}）",
+                )
             except httpx.HTTPError as exc:
                 # 接続系の失敗はリトライしない（サーバー停止時に待ち時間を倍にしない）
                 logger.warning(
                     "モデル %s の呼び出しに失敗（%s）。stub 応答にフォールバックします。",
                     model.name, exc,
                 )
-                return self._stub_result(model, messages)
+                # ReadTimeout 等は str(exc) が空のことがあるため型名も含める
+                return self._stub_result(
+                    model, messages,
+                    note=f"HTTP呼び出しに失敗（{type(exc).__name__}: {exc}）",
+                )
         return self._stub_result(model, messages)  # 到達しない（型の整合用）
 
     @staticmethod
-    def _stub_result(model: ModelSpec, messages: list[ChatMessage]) -> ChatResult:
+    def _stub_result(
+        model: ModelSpec, messages: list[ChatMessage], note: str = ""
+    ) -> ChatResult:
         last_user = next(
             (m.content for m in reversed(messages) if m.role == "user"), ""
         )
@@ -118,4 +150,5 @@ class LLMClient:
             f"[stub:{model.name}] 実LLM未接続のためダミー応答です。"
             f" 受理した指示: {last_user[:200]}"
         )
-        return ChatResult(model_name=model.name, content=content, stubbed=True)
+        return ChatResult(model_name=model.name, content=content, stubbed=True,
+                          note=note)

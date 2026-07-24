@@ -189,7 +189,10 @@ def _synth_log(record: dict) -> str:
 def _task_summary(record: dict) -> dict:
     steps = record.get("step_results", [])
     tool_ok = record.get("tool_ok")
-    status = "failed" if tool_ok is False else "done"
+    if record.get("waiting_confirmation"):
+        status = "waiting_confirmation"  # 承認待ち停止を「失敗」に畳まない
+    else:
+        status = "failed" if tool_ok is False else "done"
     return {
         "id": record.get("id"),
         "run_id": None,
@@ -267,15 +270,21 @@ def get_task(record_id: str) -> dict:
 
 @dataclass
 class CodeRunEntry:
-    """Nacht Code（CODE画面）の実行中/完了タスク。"""
+    """Nacht Code（CODE画面）の実行中/完了タスク。
+
+    plan / steps は実行中の途中経過（UIポーリング用）。ステップが確定する
+    たびに追記され、完了後は保存済みレコードと同内容になる。
+    """
 
     run_id: str
     target_dir: str
     task_text: str
     started_at: str
-    status: str = "running"          # running | done | failed
+    status: str = "running"  # running | done | failed | waiting_confirmation
     error: str = ""
     record_id: str | None = None
+    plan: list = field(default_factory=list)
+    steps: list = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
 
@@ -296,11 +305,20 @@ def _execute_code_run(entry: CodeRunEntry, model: str | None) -> None:
     plan = None
     results = []
     error = ""
+
+    def _on_step(r) -> None:
+        # 途中経過をUIポーリングへ公開する（描画はフロント側の責務）
+        with entry.lock:
+            entry.steps.append(asdict(r))
+
     try:
         plan = plan_coding_task(
             _code_client, registry, entry.target_dir, entry.task_text, model
         )
-        results = execute_plan(plan, registry, entry.task_text)
+        with entry.lock:
+            entry.plan = [{"tool": s.tool, "action": s.action, "params": s.params}
+                          for s in plan.steps]
+        results = execute_plan(plan, registry, entry.task_text, on_step=_on_step)
     except PlanRejected as exc:
         error = str(exc)
     except Exception as exc:  # 実行スレッドを静かに死なせない
@@ -310,8 +328,19 @@ def _execute_code_run(entry: CodeRunEntry, model: str | None) -> None:
     executed = [r for r in results if not r.skipped]
     ok = bool(executed) and all(r.ok for r in executed) \
         and not any(r.skipped for r in results)
+    # 承認待ちで停止した run は成功/失敗の2値に畳まず、その事実を記録する
+    # （人間の承認チャネルの操作待ち。承認後の実行は別レコードとして追記）。
+    waiting = not error and any(
+        (r.data or {}).get("needs_confirmation")
+        for r in results if not r.skipped
+    )
     if error:
         summary = f"Nacht Code: 実行しませんでした。{error}"
+    elif waiting:
+        summary = (
+            "Nacht Code: 承認待ちで停止しました（未承認のステップは実行して"
+            f"いません。承認は画面の確認パネルから。対象: {entry.target_dir}）"
+        )
     else:
         summary = (
             f"Nacht Code 実行結果: 成功{sum(1 for r in executed if r.ok)}"
@@ -336,11 +365,17 @@ def _execute_code_run(entry: CodeRunEntry, model: str | None) -> None:
         plan=[{"tool": s.tool, "action": s.action, "params": s.params}
               for s in (plan.steps if plan else [])],
         step_results=[asdict(r) for r in results],
+        waiting_confirmation=waiting,
     )
     _store.save(record)
+    # 承認待ちで停止した run は failed ではなく waiting_confirmation にする
+    # （人間の承認チャネルの操作待ち。UIポーリングはここで停止する）。
     with entry.lock:
         entry.record_id = record.id
-        entry.status = "failed" if (error or not ok) else "done"
+        if waiting:
+            entry.status = "waiting_confirmation"
+        else:
+            entry.status = "failed" if (error or not ok) else "done"
         entry.error = error
 
 
@@ -437,6 +472,141 @@ def post_nachtcode_push(req: PushRequest) -> dict:
     return {"ok": result.ok, "output": result.output, "data": result.data}
 
 
+class BrowserConfirmRequest(BaseModel):
+    """browser の人間承認チャネル（UI）からの確認POST。
+
+    kind="domain": ドメイン承認。persist=True（恒久ボタン）のときだけ
+    allowlist へ恒久追記する。kind="write": write承認。confirm_token は
+    プレビュー時に adapter が発行したワンタイムトークン。
+    """
+
+    kind: str                        # "domain" | "write"
+    action: str                      # browser の action 名
+    params: dict = {}                # プレビュー時と同じ params
+    persist: bool = False            # domain: 恒久追記（UIの恒久ボタンのみ True）
+    confirm_token: str | None = None  # write: ワンタイムトークン
+    # 承認結果を元の run/record に紐付けるための識別子（UIは渡すだけ）。
+    # 無し/不一致でも承認自体は従来通り動く（後方互換）。
+    run_id: str | None = None
+    step_index: int | None = None
+
+
+def _record_confirm_result(req: BrowserConfirmRequest, result) -> None:
+    """承認後の実行結果を元の run（in-memory）と記録（追記）に反映する。
+
+    - 次の needs_confirmation が返っている間（多段承認の途中）は何もしない。
+    - entry の更新は waiting_confirmation の run に限る（実行中の run の
+      ステータスを承認チャネルから動かさない）。
+    - record は書き換えず、承認後の実行を新規レコードとして追記する
+    　（MemoryStore の追記専用原則。元recordは停止事実の記録として残る）。
+    """
+    from app.tools.browser.adapter import HUMAN_ONLY_PARAM_KEYS
+
+    if not req.run_id or req.step_index is None:
+        return
+    if (result.data or {}).get("needs_confirmation"):
+        return
+    with _code_runs_lock:
+        entry = _code_runs.get(req.run_id)
+    if entry is None:
+        return
+
+    step_dict = {
+        "index": req.step_index, "tool": "browser", "action": req.action,
+        "params": {k: v for k, v in req.params.items()
+                   if k not in HUMAN_ONLY_PARAM_KEYS},
+        "ok": result.ok, "stubbed": result.stubbed, "output": result.output,
+        "skipped": False, "skip_reason": "", "duration_s": 0.0,
+        "started_at": datetime.now().isoformat(timespec="seconds"),
+        "data": result.data,
+    }
+
+    with entry.lock:
+        parent_record_id = entry.record_id
+        if entry.status == "waiting_confirmation":
+            target = next(
+                (s for s in entry.steps if s.get("index") == req.step_index),
+                None,
+            )
+            if target is not None:
+                target.update(step_dict)
+            # 既存ルールで再計算: 他に未承認ステップが無ければ done / failed
+            still_waiting = any(
+                (s.get("data") or {}).get("needs_confirmation")
+                for s in entry.steps if not s.get("skipped")
+            )
+            if still_waiting:
+                entry.status = "waiting_confirmation"
+            else:
+                executed = [s for s in entry.steps if not s.get("skipped")]
+                run_ok = bool(executed) and all(s.get("ok") for s in executed) \
+                    and not any(s.get("skipped") for s in entry.steps)
+                entry.status = "done" if run_ok else "failed"
+
+    _store.save(TaskRecord(
+        task_text=f"承認後の実行: browser.{req.action}（{entry.task_text[:80]}）",
+        task_kind="browser_confirm",
+        model_name="",
+        route_reason=f"人間の承認チャネル（親レコード: {parent_record_id or '不明'}"
+                     f" / run: {req.run_id}）",
+        tool_name="browser",
+        tool_action=req.action,
+        tool_ok=result.ok,
+        tool_output=result.output,
+        llm_output=f"browser.{req.action} 承認後の実行:"
+                   f" {'成功' if result.ok else '失敗'}",
+        stubbed=result.stubbed,
+        plan_source="human",
+        plan=[{"tool": "browser", "action": req.action,
+               "params": step_dict["params"]}],
+        step_results=[step_dict],
+    ))
+
+
+@app.post("/api/browser/confirm")
+def post_browser_confirm(req: BrowserConfirmRequest) -> dict:
+    """browser の承認済み再実行。/api/nachtcode/push と同型の人間チャネル。
+
+    承認フラグ（domain_approved / confirmed / confirm_token）はこの
+    エンドポイント自身が付与する。クライアントが params に紛れ込ませた
+    承認フラグは必ず除去する（人間チャネル以外からの注入を遮断）。
+    """
+    from app.tools.base import ToolRequest
+    from app.tools.browser.adapter import (
+        HUMAN_ONLY_PARAM_KEYS,
+        BrowserAdapter,
+        add_domain_to_allowlist,
+    )
+
+    if req.action not in BrowserAdapter.supported_actions:
+        raise HTTPException(status_code=400, detail=f"未知のaction: {req.action}")
+    params = {k: v for k, v in req.params.items()
+              if k not in HUMAN_ONLY_PARAM_KEYS}
+    if req.kind == "domain":
+        params["domain_approved"] = True
+        if req.persist:
+            # 恒久追記の対象は params の url から導出し、クライアントが
+            # 無関係なドメインを追記させる余地を残さない
+            from urllib.parse import urlsplit
+            host = (urlsplit(str(params.get("url") or "")).hostname or "").lower()
+            error = add_domain_to_allowlist(host)
+            if error:
+                raise HTTPException(status_code=400, detail=error)
+    elif req.kind == "write":
+        params["confirmed"] = True
+        if req.confirm_token:
+            params["confirm_token"] = req.confirm_token
+    else:
+        raise HTTPException(
+            status_code=400, detail="kind は domain / write のいずれかです"
+        )
+    result = BrowserAdapter().execute(ToolRequest(
+        action=req.action, params=params, task_text="UIからの承認"
+    ))
+    _record_confirm_result(req, result)
+    return {"ok": result.ok, "output": result.output, "data": result.data}
+
+
 @app.get("/api/nachtcode/github-repos")
 def get_github_repos() -> dict:
     """GitHubリポジトリ一覧（読み取りのみ）。{run_id} ルートより先に定義。"""
@@ -489,13 +659,20 @@ def get_nachtcode_run(run_id: str) -> dict:
             "task_text": entry.task_text,
             "started_at": entry.started_at,
             "record_id": entry.record_id,
+            # 実行中の途中経過。完了後は下のレコード由来の値で上書きされる
+            # （内容は同じで、summary が加わる）。
+            "plan": list(entry.plan),
+            "steps": list(entry.steps),
         }
     if result["record_id"]:
         record = _store.load_by_id(result["record_id"])
         if record:
             result["summary"] = record.get("llm_output", "")
             result["plan"] = record.get("plan", [])
-            result["steps"] = record.get("step_results", [])
+            # steps は entry 側が正（承認後の実行結果で更新され得る）。
+            # record のスナップショットは entry が空のときだけ使う。
+            if not result["steps"]:
+                result["steps"] = record.get("step_results", [])
     return result
 
 

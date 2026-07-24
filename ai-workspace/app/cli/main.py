@@ -58,6 +58,16 @@ def _cmd_run(args: argparse.Namespace) -> int:
             print(f"          {summary}")
     if outcome.stubbed:
         print("注記       : stub 応答を含みます（実接続なし）")
+    # browser の確認ステップ: needs_confirmation が返っていたらここで人間の
+    # 入力（ドメイン3択 / write承認）を待ち、承認された場合のみ再実行する。
+    for r in outcome.steps:
+        if r.tool == "browser" and not r.skipped \
+                and isinstance(r.data, dict) \
+                and r.data.get("needs_confirmation"):
+            from app.tools.browser.runner import handle_browser_confirmation
+            result = handle_browser_confirmation(r.data, task_text=args.task)
+            if result is not None:
+                print(("完了: " if result.ok else "失敗: ") + result.output)
     print(f"記録ID     : {outcome.record_id}")
     print("=" * 60)
     print(outcome.llm_output)
