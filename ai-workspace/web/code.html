@@ -127,10 +127,25 @@
         const res = await KURO.json('/api/browser/confirm', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          // run_id / step_index はrun記録への紐付け用の識別子（渡すだけ）
+          body: JSON.stringify(Object.assign(
+            { run_id: d.run_id || null, step_index: d.step_index || null },
+            payload)),
         });
         const rd = res.data || {};
-        if (rd.needs_confirmation) { renderBrowserConfirm(box, rd); return; }
+        if (rd.needs_confirmation) {
+          // 多段承認（submit_form の最終確認等）: 識別子を引き継いで次段へ
+          renderBrowserConfirm(box, Object.assign({}, rd,
+            { run_id: d.run_id, step_index: d.step_index }));
+          return;
+        }
+        if (d.run_id) {
+          // 承認後の実行結果が run に反映されたので、最新状態を再描画する
+          try {
+            renderResult(await KURO.json('/api/nachtcode/' + d.run_id));
+            return;
+          } catch (e2) { /* 取得失敗時はその場表示にフォールバック */ }
+        }
         row.remove();
         pre.textContent = (res.ok ? '完了:\n' : '失敗:\n') + res.output;
       } catch (e) {
@@ -221,7 +236,10 @@
       if (!d0.needs_confirmation) continue;
       if (s.tool === 'browser' || d0.kind === 'domain' || d0.kind === 'write') {
         html += '<div class="browser-confirm" data-bidx="' + browserConfs.length + '"></div>';
-        browserConfs.push(d0);
+        // 承認結果を元の run/step に紐付けるための識別子を同乗させる
+        // （承認フラグ・トークンの扱いはサーバー側のまま変えない）
+        browserConfs.push(Object.assign({}, d0,
+          { run_id: run.run_id, step_index: s.index }));
         continue;
       }
       html += '<div class="panel" style="margin-top:14px;border-color:rgba(212,167,45,0.4)">' +

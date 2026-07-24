@@ -281,9 +281,13 @@ def test_nachtcode_needs_confirmation_ends_as_waiting_confirmation(
     assert run["steps"][0]["data"]["needs_confirmation"] is True
     assert run["plan"] and run["plan"][0]["tool"] == "browser"
 
-    # TASKS 画面が受け取る /api/tasks には未知の status を流さない
-    statuses = {t["status"] for t in client.get("/api/tasks").json()["tasks"]}
-    assert statuses <= {"running", "done", "failed"}
+    # TASKS 画面が受け取る status はフロント（kuro.js statusText）が
+    # 表示できる既知の値のみ。承認待ち record は「失敗」に畳まれない。
+    tasks = client.get("/api/tasks").json()["tasks"]
+    statuses = {t["status"] for t in tasks}
+    assert statuses <= {"running", "done", "failed", "waiting_confirmation"}
+    parent = next(t for t in tasks if t["tag"] == "coding")
+    assert parent["status"] == "waiting_confirmation"
 
 
 def test_nachtcode_exposes_live_steps_while_running(client, tmp_path, monkeypatch):
@@ -325,3 +329,135 @@ def test_nachtcode_exposes_live_steps_while_running(client, tmp_path, monkeypatc
     run = _wait_code_run(client, run_id)
     assert run["status"] == "done"
     assert len(run["steps"]) == 2
+
+
+# --- 承認後の実行結果の run 反映と追記レコード（案B） -------------------------
+
+
+class _FakeBrowserAdapter:
+    """承認POSTの先で実行される BrowserAdapter の置き換え（実ネットワークなし）。"""
+
+    supported_actions = ("fetch_page",)
+    result = None  # テスト側で ToolResult を差し込む
+
+    def execute(self, request):
+        return type(self).result
+
+
+def _waiting_run(client, tmp_path, monkeypatch):
+    """needs_confirmation で停止した run を作り run_id を返す。"""
+    import app.server.main as server_main
+    from app.orchestrator.executor import StepResult
+
+    _fake_plan(monkeypatch, server_main)
+
+    def fake_execute_plan(plan, registry, task_text, on_step=None, **kw):
+        r = StepResult(
+            index=1, tool="browser", action="fetch_page", params={},
+            ok=True, output="[確認待ち] まだアクセスしていません",
+            data={"needs_confirmation": True, "kind": "domain",
+                  "domain": "example.com", "url": "https://example.com",
+                  "params": {"url": "https://example.com"}},
+        )
+        if on_step:
+            on_step(r)
+        return [r]
+
+    monkeypatch.setattr(server_main, "execute_plan", fake_execute_plan)
+    res = client.post("/api/nachtcode",
+                      json={"dir": str(_git_proj(tmp_path)), "task": "取得して"})
+    run = _wait_code_run(client, res.json()["run_id"])
+    assert run["status"] == "waiting_confirmation"
+    return run
+
+
+def _patch_browser_adapter(monkeypatch, result):
+    import app.tools.browser.adapter as browser_adapter
+    _FakeBrowserAdapter.result = result
+    monkeypatch.setattr(browser_adapter, "BrowserAdapter", _FakeBrowserAdapter)
+
+
+def test_confirm_with_run_id_updates_entry_and_appends_record(
+    client, tmp_path, monkeypatch
+):
+    from app.tools.base import ToolResult
+
+    run = _waiting_run(client, tmp_path, monkeypatch)
+    parent_record_id = run["record_id"]
+    _patch_browser_adapter(monkeypatch, ToolResult(
+        ok=True,
+        output="[外部データ開始] Example Domain [外部データ終了]",
+        data={"url": "https://example.com", "title": "Example Domain"},
+    ))
+
+    res = client.post("/api/browser/confirm", json={
+        "kind": "domain", "action": "fetch_page",
+        "params": {"url": "https://example.com"},
+        "run_id": run["run_id"], "step_index": 1,
+    })
+    assert res.status_code == 200 and res.json()["ok"] is True
+
+    # entry.steps が実行結果へ差し替わり、run は done へ遷移する
+    after = client.get(f"/api/nachtcode/{run['run_id']}").json()
+    assert after["status"] == "done"
+    assert "外部データ開始" in after["steps"][0]["output"]
+    assert not (after["steps"][0]["data"] or {}).get("needs_confirmation")
+
+    # 承認後の実行が新規レコードとして追記される（元recordは書き換えない）
+    tasks = client.get("/api/tasks").json()["tasks"]
+    confirm_rec = next(t for t in tasks if t["tag"] == "browser_confirm")
+    assert confirm_rec["status"] == "done"
+    parent = client.get(f"/api/tasks/{parent_record_id}").json()
+    assert parent["steps"][0]["data"]["needs_confirmation"] is True  # 承認前のまま
+    assert parent["status"] == "waiting_confirmation"
+
+    detail = client.get(f"/api/tasks/{confirm_rec['id']}").json()
+    assert "外部データ開始" in detail["steps"][0]["output"]
+    assert parent_record_id in detail["route_reason"]  # 親レコードへの参照
+
+
+def test_confirm_multi_stage_keeps_waiting_and_no_record(
+    client, tmp_path, monkeypatch
+):
+    from app.tools.base import ToolResult
+
+    run = _waiting_run(client, tmp_path, monkeypatch)
+    _patch_browser_adapter(monkeypatch, ToolResult(
+        ok=True, output="[確認待ち] 送信の最終確認",
+        data={"needs_confirmation": True, "kind": "write", "final": True,
+              "confirm_token": "tok2", "params": {}},
+    ))
+
+    res = client.post("/api/browser/confirm", json={
+        "kind": "domain", "action": "fetch_page",
+        "params": {"url": "https://example.com"},
+        "run_id": run["run_id"], "step_index": 1,
+    })
+    assert res.status_code == 200
+
+    after = client.get(f"/api/nachtcode/{run['run_id']}").json()
+    assert after["status"] == "waiting_confirmation"  # 多段承認の途中は維持
+    tags = [t["tag"] for t in client.get("/api/tasks").json()["tasks"]]
+    assert "browser_confirm" not in tags  # 実行が確定するまで追記しない
+
+
+def test_confirm_without_run_id_is_backward_compatible(
+    client, tmp_path, monkeypatch
+):
+    from app.tools.base import ToolResult
+
+    run = _waiting_run(client, tmp_path, monkeypatch)
+    _patch_browser_adapter(monkeypatch, ToolResult(
+        ok=True, output="完了", data={},
+    ))
+
+    res = client.post("/api/browser/confirm", json={
+        "kind": "domain", "action": "fetch_page",
+        "params": {"url": "https://example.com"},
+    })
+    assert res.status_code == 200 and res.json()["ok"] is True
+
+    after = client.get(f"/api/nachtcode/{run['run_id']}").json()
+    assert after["status"] == "waiting_confirmation"  # run には触れない
+    tags = [t["tag"] for t in client.get("/api/tasks").json()["tasks"]]
+    assert "browser_confirm" not in tags

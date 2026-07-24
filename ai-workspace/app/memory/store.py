@@ -47,6 +47,9 @@ class TaskRecord:
     session_id: str = ""         # 会話ID（空 = レガシー記録またはCLI実行）
     plan_source: str = ""        # "llm" | "rules" | "fast"（実行計画の生成方式）
     plan_note: str = ""          # フォールバック理由・拒否理由等
+    # 人間の承認待ちで停止した run の記録（成功/失敗の2値に畳まない）。
+    # 承認後の実行は別レコードとして追記される（このレコードは書き換えない）。
+    waiting_confirmation: bool = False
     plan: list = field(default_factory=list)          # 計画ステップの一覧
     step_results: list = field(default_factory=list)  # ステップごとの実行事実
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
