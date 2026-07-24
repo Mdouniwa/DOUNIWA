@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# 環境変数のバックアップ類(誤コミット・誤アップロード防止)
+*.env.backup*
+.env.backup*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
