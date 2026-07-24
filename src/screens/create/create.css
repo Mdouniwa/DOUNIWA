@@ -201,6 +201,20 @@
   object-fit: cover;
 }
 
+/* できあがり確認: 生成された物語文 */
+.review-text {
+  text-align: center;
+  font-size: 20px;
+  line-height: 1.6;
+  color: var(--color-text);
+  background: var(--color-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: 14px 18px;
+  align-self: center;
+  max-width: 480px;
+}
+
 .record-controls {
   display: flex;
   flex-direction: column;

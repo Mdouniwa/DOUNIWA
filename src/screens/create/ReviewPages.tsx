@@ -9,14 +9,19 @@ import { BigButton } from '../../components/BigButton';
 
 const EFFECTS: SoundEffect[] = ['clap', 'animal', 'car', 'sparkle', 'trumpet'];
 
-interface RecordPagesProps {
+interface ReviewPagesProps {
   pages: DraftPage[];
   onChange: (pages: DraftPage[]) => void;
   onNext: () => void;
 }
 
-/** Step4: ページごとの録音 + 効果音選択 */
-export function RecordPages({ pages, onChange, onNext }: RecordPagesProps) {
+/**
+ * Step3: できあがり確認。
+ * 生成された挿絵+物語文を1ページずつ確認し、生成音声をプレビュー再生できる。
+ * 気に入らなければ「じぶんの こえで とりなおす」で録音上書き(既存useRecorder再利用)。
+ * ページタップ時の効果音も選べる(既存の5種チップ)。
+ */
+export function ReviewPages({ pages, onChange, onNext }: ReviewPagesProps) {
   const [index, setIndex] = useState(0);
   const recorder = useRecorder();
   const previewRef = useRef<HTMLAudioElement | null>(null);
@@ -25,12 +30,10 @@ export function RecordPages({ pages, onChange, onNext }: RecordPagesProps) {
   const page = pages[index];
   const imageUrl = useBlobUrl(page?.imageBlob);
 
-  // 効果音プレビューの初回遅延を避けるため先にレンダリング
   useEffect(() => {
     prewarmSounds();
   }, []);
 
-  // ページ移動・アンマウント時にプレビュー停止
   const stopPreview = () => {
     previewRef.current?.pause();
     previewRef.current = null;
@@ -49,10 +52,14 @@ export function RecordPages({ pages, onChange, onNext }: RecordPagesProps) {
     if (recorder.state === 'recording') {
       const result = await recorder.stop();
       if (result) {
-        updatePage({ audioBlob: result.blob, audioMime: result.mime });
+        // 子どもの声で上書き → 出自を 'recorded' に切り替える
+        updatePage({
+          audioBlob: result.blob,
+          audioMime: result.mime,
+          narrationSource: 'recorded',
+        });
       }
     } else {
-      // 録り直し: 前の録音は上書きされるので1タップで開始できる
       await recorder.start();
     }
   };
@@ -83,39 +90,43 @@ export function RecordPages({ pages, onChange, onNext }: RecordPagesProps) {
   };
 
   const isRecording = recorder.state === 'recording';
+  const isRecorded = page.narrationSource === 'recorded';
   const isLast = index === pages.length - 1;
 
   return (
     <div className="create-step">
       <h2 className="create-step-title">
-        こえを いれよう({index + 1} / {pages.length})
+        できあがり!({index + 1} / {pages.length})
       </h2>
 
       <div className="record-photo">{imageUrl && <img src={imageUrl} alt="" />}</div>
 
+      {page.captionText && <p className="review-text">{page.captionText}</p>}
+
       <div className="record-controls">
+        {page.audioBlob && !isRecording && (
+          <button className="record-preview pressable" onClick={playPreview}>
+            {previewing ? '▶ さいせいちゅう…' : '▶ こえを きく'}
+          </button>
+        )}
+
         <button
           className={`record-button pressable ${isRecording ? 'record-button--recording' : ''}`}
           onClick={() => void toggleRecord()}
-          aria-label={isRecording ? '録音を止める' : '録音する'}
+          aria-label={isRecording ? '録音を止める' : 'じぶんの声で録り直す'}
         >
           {isRecording ? '⏹' : '🎤'}
         </button>
         <div className="record-status">
           {isRecording
             ? 'ろくおんちゅう… もういちど おすと とまるよ'
-            : page.audioBlob
-              ? 'とれたよ! 🎤で とりなおせるよ'
-              : '🎤を おして おはなししてね'}
+            : isRecorded
+              ? 'じぶんの こえに なったよ! 🎤で とりなおせるよ'
+              : '🎤を おすと じぶんの こえで とりなおせるよ'}
           {recorder.state === 'error' && (
             <span className="record-error">マイクが つかえないみたい</span>
           )}
         </div>
-        {page.audioBlob && !isRecording && (
-          <button className="record-preview pressable" onClick={playPreview}>
-            {previewing ? '▶ さいせいちゅう…' : '▶ きいてみる'}
-          </button>
-        )}
       </div>
 
       <div className="effect-row">
@@ -140,7 +151,6 @@ export function RecordPages({ pages, onChange, onNext }: RecordPagesProps) {
       </div>
 
       <div className="create-step-footer record-footer">
-        {/* 録音中の可能性があるためタップ音は鳴らさない(マイクに乗るのを防ぐ) */}
         <BigButton color="ghost" silent onClick={() => void goPage(-1)} disabled={index === 0}>
           ← まえ
         </BigButton>

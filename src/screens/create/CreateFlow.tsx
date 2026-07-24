@@ -5,7 +5,7 @@ import { categoryToTheme, iconByKeyword } from '../../lib/icons';
 import { ProgressDots } from '../../components/ProgressDots';
 import { IconSelect } from './IconSelect';
 import { Generating } from './Generating';
-import { RecordPages } from './RecordPages';
+import { ReviewPages } from './ReviewPages';
 import { CoverSetup } from './CoverSetup';
 import { Done } from './Done';
 import './create.css';
@@ -90,7 +90,7 @@ export function CreateFlow({ navigate }: CreateFlowProps) {
         />
       )}
       {step === 'review' && (
-        <RecordPages
+        <ReviewPages
           pages={draft.pages}
           onChange={(pages) => updateDraft({ pages })}
           onNext={() => setStep('cover')}
