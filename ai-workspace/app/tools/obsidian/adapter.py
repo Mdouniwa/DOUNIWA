@@ -27,6 +27,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+import httpx
+
 from app.tools.base import ToolAdapter, ToolRequest, ToolResult
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,20 @@ _QUOTED_TITLE = re.compile(r"『([^』]+)』|「([^」]+)」")
 
 _MAX_SEARCH_MATCHES = 10
 _MAX_FILE_BYTES = 2 * 1024 * 1024  # 検索時に読む1ファイルの上限
+
+# --- semantic_search（AIVENA OS /search を叩くだけ。索引はここでは作らない） ---
+_SEMANTIC_TIMEOUT_S = 60.0
+_SEMANTIC_DEFAULT_K = 5
+_SEMANTIC_MAX_K = 20
+#: この値未満は「関連性が低い可能性」の印を付ける（暫定値。除外はしない。
+#: retriever にスコア閾値が無く常にk件返るため、表示側で注意を促す）
+_SEMANTIC_LOW_SCORE = 0.35
+#: kuro.console 側の vault 名 -> 索引側の vault 名。索引に無い名前は拒否する
+_SEMANTIC_VAULT_MAP = {
+    "personal": "Personal",
+    "akane": "Akane",
+    "あかね": "Akane",
+}
 
 
 def _title_from_task(task_text: str) -> str | None:
@@ -56,7 +72,8 @@ def _iter_notes(root: Path):
 
 class ObsidianAdapter(ToolAdapter):
     name = "obsidian"
-    supported_actions = ("save_note", "search_notes", "append_note")
+    supported_actions = ("save_note", "search_notes", "semantic_search",
+                         "append_note")
     action_docs = {
         "save_note": (
             "Obsidian vault に新規ノートを保存する。"
@@ -64,8 +81,17 @@ class ObsidianAdapter(ToolAdapter):
             ' "vault": "personal または akane"（省略時 personal）}'
         ),
         "search_notes": (
-            "Obsidian vault 内のノートを全文検索し、該当ファイルと抜粋を返す。"
+            "指定した語句がそのまま含まれるノートを探す（完全一致）。"
+            "ファイル名・ID・固有の綴りを厳密に探す場合だけ使う。"
+            "内容で探すときは semantic_search を使うこと。"
             ' params: {"query": "検索語", "vault": "personal または akane"}'
+        ),
+        "semantic_search": (
+            "Obsidian vault を意味で検索する。表記が違っても内容が"
+            "近ければ見つかる。ノートを探す場合はまずこれを使うこと。"
+            ' params: {"query": "検索したい内容",'
+            ' "vault": "personal または akane"（省略時は両vault横断）,'
+            ' "k": 件数（省略時5）}'
         ),
         "append_note": (
             "既存ノートの末尾に追記する（存在しないノートには追記できない。"
@@ -81,6 +107,8 @@ class ObsidianAdapter(ToolAdapter):
             return self._save_note(request)
         if request.action == "search_notes":
             return self._search_notes(request)
+        if request.action == "semantic_search":
+            return self._semantic_search(request)
         if request.action == "append_note":
             return self._append_note(request)
         return ToolResult(ok=False, output=f"unknown action: {request.action}")
@@ -224,6 +252,124 @@ class ObsidianAdapter(ToolAdapter):
             ok=True,
             output="\n".join(lines),
             data={"vault": label, "query": query, "matches": matches},
+        )
+
+    # ------------------------------------------------------------------
+    # semantic_search（AIVENA OS の /search を叩く薄いラッパー）
+    # ------------------------------------------------------------------
+
+    def _semantic_search(self, request: ToolRequest) -> ToolResult:
+        query = str(request.params.get("query") or "").strip()
+        if not query:
+            return ToolResult(
+                ok=False,
+                output='semantic_search には params {"query": "検索したい内容"} が必要です',
+            )
+
+        url = os.environ.get("AIVENA_SEARCH_URL")
+        token = os.environ.get("AIVENA_SEARCH_TOKEN")
+        if not url or not token:
+            missing = "AIVENA_SEARCH_URL" if not url else "AIVENA_SEARCH_TOKEN"
+            return ToolResult(
+                ok=True,
+                stubbed=True,
+                output=(
+                    f"[stub:obsidian] {missing} が未設定のため stub 応答です。"
+                    " 意味検索は実際には実行されていません。"
+                ),
+            )
+
+        # vault 名の変換（索引側は Personal / Akane）。索引に無い名前は
+        # 黙って0件にせず、対象外であることを明示して返す。
+        vault_raw = str(request.params.get("vault") or "").strip()
+        vault = None
+        if vault_raw:
+            vault = _SEMANTIC_VAULT_MAP.get(vault_raw.lower())
+            if vault is None:
+                known = " / ".join(sorted(set(_SEMANTIC_VAULT_MAP)))
+                return ToolResult(
+                    ok=False,
+                    output=(
+                        f"vault '{vault_raw}' は意味検索の索引対象外です"
+                        f"（指定できるのは {known}。省略すると両vault横断）"
+                    ),
+                )
+
+        try:
+            k = int(request.params.get("k") or _SEMANTIC_DEFAULT_K)
+        except (TypeError, ValueError):
+            k = _SEMANTIC_DEFAULT_K
+        k = max(1, min(k, _SEMANTIC_MAX_K))
+
+        query_params = {"q": query, "k": k}
+        if vault:
+            query_params["vault"] = vault
+        try:
+            resp = httpx.get(
+                url,
+                params=query_params,
+                headers={"X-AIVENA-TOKEN": token},
+                timeout=_SEMANTIC_TIMEOUT_S,
+            )
+        except httpx.HTTPError as exc:
+            # 接続失敗・タイムアウト等。原因を隠すと診断できないため
+            # 例外の型名と内容・接続先をそのまま返す。
+            logger.warning("semantic_search の接続に失敗: %s", exc)
+            return ToolResult(
+                ok=False,
+                output=(
+                    "semantic_search の接続に失敗しました"
+                    f"（{type(exc).__name__}: {exc} / 接続先: {url}）"
+                ),
+            )
+        if resp.status_code != 200:
+            # 401(認証)・422(空クエリ)・502(埋め込み失敗) 等を区別して返す
+            return ToolResult(
+                ok=False,
+                output=(
+                    f"semantic_search が HTTP {resp.status_code} を返しました:"
+                    f" {resp.text[:300]}"
+                ),
+            )
+        try:
+            data = resp.json()
+            results = data["results"]
+        except (ValueError, KeyError) as exc:
+            return ToolResult(
+                ok=False,
+                output=f"semantic_search の応答を解釈できません（{exc}）:"
+                       f" {resp.text[:300]}",
+            )
+
+        scope = f"vault: {vault}" if vault else "両vault横断"
+        if not results:
+            return ToolResult(
+                ok=True,
+                output=(
+                    f"意味検索の結果は0件でした（クエリ: '{query}' / {scope}）。"
+                    "スコア閾値による除外はないため、0件は索引が空か"
+                    " vault 絞り込みが原因です。"
+                ),
+                data={"query": query, "count": 0, "results": []},
+            )
+
+        lines = [
+            "意味が近い順の候補です（類似度順に必ずk件返すため、"
+            "無関係な結果が含まれることがあります）。"
+            f" クエリ: '{query}' / {scope} / {len(results)}件:"
+        ]
+        for r in results:
+            score = float(r.get("score") or 0.0)
+            mark = "（関連性が低い可能性）" if score < _SEMANTIC_LOW_SCORE else ""
+            snippet = str(r.get("text") or "").replace("\n", " ")[:160]
+            lines.append(
+                f"- [score {score:.3f}]{mark} {r.get('vault')}/{r.get('path')}:"
+                f" {snippet}"
+            )
+        return ToolResult(
+            ok=True,
+            output="\n".join(lines),
+            data={"query": query, "count": len(results), "results": results},
         )
 
     # ------------------------------------------------------------------

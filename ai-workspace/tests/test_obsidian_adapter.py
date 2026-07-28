@@ -226,3 +226,106 @@ def test_append_note_rejects_path_outside_vault(tmp_path, monkeypatch):
     ))
     assert result.ok is False
     assert outside.read_text(encoding="utf-8") == "外部ファイル"  # 無傷
+
+
+# --- semantic_search（AIVENA OS /search の薄いラッパー） ---------------------
+
+
+class _FakeResp:
+    def __init__(self, status_code: int, payload=None, text: str = "") -> None:
+        self.status_code = status_code
+        self._payload = payload
+        self.text = text or (str(payload) if payload is not None else "")
+
+    def json(self):
+        if self._payload is None:
+            raise ValueError("not json")
+        return self._payload
+
+
+def _sem_request(params: dict) -> ToolRequest:
+    return ToolRequest(action="semantic_search", params=params,
+                       task_text="ノートを意味で検索して")
+
+
+def _sem_env(monkeypatch):
+    monkeypatch.setenv("AIVENA_SEARCH_URL", "https://fake.example:8787/search")
+    monkeypatch.setenv("AIVENA_SEARCH_TOKEN", "dummy-token")
+
+
+def test_semantic_search_stub_when_env_unset(monkeypatch):
+    monkeypatch.delenv("AIVENA_SEARCH_URL", raising=False)
+    monkeypatch.delenv("AIVENA_SEARCH_TOKEN", raising=False)
+    result = ObsidianAdapter().execute(_sem_request({"query": "MLX"}))
+    assert result.ok is True and result.stubbed is True
+    assert "AIVENA_SEARCH_URL" in result.output
+
+
+def test_semantic_search_maps_vault_and_formats_scores(monkeypatch):
+    import httpx as _httpx
+    _sem_env(monkeypatch)
+    captured = {}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        captured.update(url=url, params=params, headers=headers, timeout=timeout)
+        return _FakeResp(200, {
+            "query": "MLX", "count": 2,
+            "results": [
+                {"vault": "Personal", "path": "raw/a.md", "score": 0.72,
+                 "text": "MLXサーバー復旧記録", "truncated": False},
+                {"vault": "Akane", "path": "wiki/b.md", "score": 0.21,
+                 "text": "無関係な話", "truncated": False},
+            ],
+        })
+
+    monkeypatch.setattr(_httpx, "get", fake_get)
+    result = ObsidianAdapter().execute(
+        _sem_request({"query": "MLX", "vault": "akane", "k": 2}))
+    assert result.ok is True and result.stubbed is False
+    assert captured["params"] == {"q": "MLX", "k": 2, "vault": "Akane"}  # 変換
+    assert captured["headers"] == {"X-AIVENA-TOKEN": "dummy-token"}
+    assert captured["timeout"] == 60.0
+    assert "無関係な結果が含まれることがあります" in result.output  # 但し書き
+    assert "[score 0.720]" in result.output
+    assert "[score 0.210]（関連性が低い可能性）" in result.output  # 0.35未満の印
+    assert "該当なし" not in result.output
+
+
+def test_semantic_search_rejects_unknown_vault_without_http(monkeypatch):
+    import httpx as _httpx
+    _sem_env(monkeypatch)
+
+    def fail_get(*a, **k):
+        raise AssertionError("HTTPを呼んではいけない")
+
+    monkeypatch.setattr(_httpx, "get", fail_get)
+    result = ObsidianAdapter().execute(
+        _sem_request({"query": "x", "vault": "tech-watch"}))
+    assert result.ok is False
+    assert "索引対象外" in result.output
+
+
+def test_semantic_search_connection_error_names_cause(monkeypatch):
+    import httpx as _httpx
+    _sem_env(monkeypatch)
+
+    def fake_get(*a, **k):
+        raise _httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(_httpx, "get", fake_get)
+    result = ObsidianAdapter().execute(_sem_request({"query": "MLX"}))
+    assert result.ok is False
+    assert "ConnectError" in result.output       # 例外型名で原因が分かる
+    assert "fake.example" in result.output       # 接続先も出す
+
+
+def test_semantic_search_non_200_shows_status_and_body(monkeypatch):
+    import httpx as _httpx
+    _sem_env(monkeypatch)
+    monkeypatch.setattr(
+        _httpx, "get",
+        lambda *a, **k: _FakeResp(401, None, '{"detail":"invalid token"}'))
+    result = ObsidianAdapter().execute(_sem_request({"query": "MLX"}))
+    assert result.ok is False
+    assert "HTTP 401" in result.output
+    assert "invalid token" in result.output
