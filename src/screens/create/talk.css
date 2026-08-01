@@ -1,0 +1,268 @@
+/* S2: 対話画面(えほんの精との会話) */
+
+.talk-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* --- ヘッダー: 進捗(花) + やめる --- */
+.talk-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.talk-progress {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-card);
+  border-radius: 999px;
+  padding: 8px 16px;
+  box-shadow: var(--shadow-card);
+}
+
+.talk-progress-flower {
+  font-size: 22px;
+  filter: grayscale(1);
+  opacity: 0.35;
+  transition: filter 0.3s, opacity 0.3s, transform 0.3s;
+}
+
+.talk-progress-flower.is-filled {
+  filter: none;
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.talk-progress-text {
+  margin-left: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text-light);
+}
+
+.talk-quit {
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+  color: var(--color-text-light);
+  font-size: 24px;
+  cursor: pointer;
+}
+
+/* --- えほんの精 --- */
+.talk-fairy {
+  margin-top: 4px;
+  animation: talk-fairy-float 3.2s ease-in-out infinite;
+}
+
+.talk-fairy.is-thinking {
+  animation: talk-fairy-sway 1.6s ease-in-out infinite;
+}
+
+.talk-fairy-img {
+  width: min(46vw, 240px);
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+@keyframes talk-fairy-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes talk-fairy-sway {
+  0%,
+  100% {
+    transform: rotate(-2deg) translateY(0);
+  }
+  50% {
+    transform: rotate(2deg) translateY(-4px);
+  }
+}
+
+/* --- 質問文 --- */
+.talk-question {
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 8px;
+}
+
+.talk-question-text {
+  margin: 0;
+  font-size: 27px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--color-primary-dark);
+  text-wrap: balance;
+}
+
+.talk-question-thinking {
+  color: var(--color-text-light);
+  animation: talk-thinking-blink 1.4s ease-in-out infinite;
+}
+
+@keyframes talk-thinking-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.talk-retry {
+  border: none;
+  border-radius: 999px;
+  min-height: 64px;
+  padding: 0 32px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--color-primary);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+}
+
+/* --- 答え方(マイク + 選択肢) --- */
+.talk-answers {
+  margin-top: auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 8px;
+}
+
+.talk-mic {
+  width: min(100%, 340px);
+  min-height: 96px;
+  border: none;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--color-primary);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  touch-action: none; /* 押しっぱなし中のスクロール・長押しメニューを防ぐ */
+  -webkit-touch-callout: none;
+}
+
+.talk-mic:disabled {
+  opacity: 0.55;
+}
+
+.talk-mic-icon {
+  font-size: 32px;
+}
+
+.talk-mic.is-listening {
+  background: var(--color-accent);
+  animation: talk-mic-pulse 1s ease-in-out infinite;
+}
+
+@keyframes talk-mic-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 oklch(58% 0.12 300 / 0.45);
+  }
+  50% {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 14px oklch(58% 0.12 300 / 0);
+  }
+}
+
+.talk-choices {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.talk-choice {
+  min-height: 88px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 4px;
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.talk-choice:disabled {
+  opacity: 0.55;
+}
+
+.talk-choice-emoji {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.talk-choice-label {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* 聞き取り失敗が続く・マイク不可のとき: 選択肢を大きく前面に */
+.talk-answers--big .talk-choices {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.talk-answers--big .talk-choice {
+  min-height: 112px;
+}
+
+.talk-answers--big .talk-choice-emoji {
+  font-size: 48px;
+}
+
+.talk-answers--big .talk-choice-label {
+  font-size: 19px;
+}
+
+.talk-answers--big .talk-mic {
+  min-height: 72px;
+  width: min(100%, 260px);
+  font-size: 18px;
+  opacity: 0.9;
+}
+
+/* 横幅が狭い端末では選択肢を2列に */
+@media (max-width: 480px) {
+  .talk-choices {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
