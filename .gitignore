@@ -28,4 +28,12 @@ dist-ssr
 *.sw?
 .vercel
 .env*
+!.env.example
 ai-workspace/
+
+# 対話サーバー(server/)
+server/dist
+# サービスアカウント鍵は絶対にコミットしない
+*service-account*.json
+*-sa.json
+secrets/

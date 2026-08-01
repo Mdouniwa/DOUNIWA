@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  しゃべる絵本メーカー v5 対話サーバーの launchd 常駐化設定(例)。
+
+  使い方:
+    1. パス(WorkingDirectory / ProgramArguments / ログ出力先)を自分の環境に合わせて書き換える
+    2. cp server/launchd/com.douniwa.ehon-server.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.douniwa.ehon-server.plist
+    4. 停止は launchctl unload、状態確認は launchctl list | grep douniwa
+
+  事前に server/ で `npm install && npm run build` を済ませておくこと。
+  環境変数は server/.env から読み込まれる(このplistに鍵の中身を書かないこと)。
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.douniwa.ehon-server</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <!-- `which node` の結果に合わせる(nvm利用時は ~/.nvm/versions/node/vXX/bin/node) -->
+    <string>/usr/local/bin/node</string>
+    <string>dist/index.js</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/USERNAME/Documents/DOUNIWA/server</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/ehon-server.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/ehon-server.err.log</string>
+</dict>
+</plist>
