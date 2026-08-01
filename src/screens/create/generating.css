@@ -1,55 +1,69 @@
 .generating-step {
   align-items: center;
   justify-content: center;
-  gap: 32px;
+  gap: 28px;
   text-align: center;
 }
 
-/* 選んだアイコンが中心の周りをくるくる回る */
-.generating-orbit {
+/* 精と、浮かび上がる答えのステージ */
+.generating-stage {
   position: relative;
-  width: 260px;
-  height: 260px;
-  animation: generating-spin 6s linear infinite;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-@keyframes generating-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.generating-fairy {
+  width: min(52vw, 240px);
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+  animation: generating-float 3s ease-in-out infinite;
 }
 
-.generating-center {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 64px;
-  animation: generating-pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes generating-pulse {
+@keyframes generating-float {
   0%,
   100% {
-    transform: translate(-50%, -50%) scale(1);
+    transform: translateY(0);
   }
   50% {
-    transform: translate(-50%, -50%) scale(1.25);
+    transform: translateY(-10px);
   }
 }
 
-.generating-icon {
+/* 子どもが答えた内容が順に浮かび上がる */
+.generating-answer {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  margin: -22px;
-  width: 44px;
-  height: 44px;
-  font-size: 40px;
-  transform-origin: center;
+  bottom: -14px;
+  margin: 0;
+  padding: 10px 22px;
+  border-radius: 999px;
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-accent);
+  white-space: nowrap;
+  max-width: 88vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: generating-answer-rise 2.8s ease-in-out both;
+}
+
+@keyframes generating-answer-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.9);
+  }
+  18%,
+  78% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.96);
+  }
 }
 
 .generating-message {
@@ -61,18 +75,42 @@
   align-items: center;
 }
 
+/* 進捗バー(星が先頭を進む) */
+.generating-bar {
+  width: min(80%, 360px);
+  height: 22px;
+  border-radius: 999px;
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.generating-bar-fill {
+  position: relative;
+  height: 100%;
+  min-width: 26px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--color-accent), var(--color-primary));
+  transition: width 0.9s ease;
+}
+
+.generating-bar-star {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+}
+
 .generating-hint {
   font-size: 18px;
   color: var(--color-text-light);
 }
 
 /* エラー時 */
-.generating-error-emoji {
-  font-size: 96px;
-}
-
 .generating-error-text {
   font-size: 22px;
+  line-height: 1.6;
   color: var(--color-text);
 }
 

@@ -14,8 +14,12 @@ export interface Book {
   createdAt: number;
   updatedAt: number;
   lastOpenedAt: number;
-  // 選んだ5つのアイコンキーワード(選択順)。旧・写真絵本には無いためoptional
+  // v4: 選んだ5つのアイコンキーワード(選択順)。旧データ互換のため残す
   iconKeywords?: string[];
+  // v5: えほんの精との対話ログ(iconKeywordsを置き換え)。旧データには無いためoptional
+  conversation?: Array<{ question: string; answer: string }>;
+  // v5: 主人公の基準画像のPage id(参照画像方式用。pageIdsには含めない)
+  characterRefImageId?: string;
 }
 
 export interface Page {

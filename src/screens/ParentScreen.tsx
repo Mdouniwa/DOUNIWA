@@ -11,6 +11,7 @@ import {
 import { BookCard } from '../components/BookCard';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PageThumb } from './create/PageThumb';
+import { getTalkServerUrl, setTalkServerUrl } from '../lib/serverConfig';
 import './ParentScreen.css';
 
 interface ParentScreenProps {
@@ -52,6 +53,7 @@ export function ParentScreen({ navigate }: ParentScreenProps) {
               <BookCard key={book.id} book={book} onClick={() => setSelected(book)} />
             ))}
           </div>
+          <ServerSettings />
         </>
       ) : (
         <BookEditor
@@ -66,6 +68,55 @@ export function ParentScreen({ navigate }: ParentScreenProps) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** 対話サーバー(Mac mini)の接続先設定。Tailscale経由のURLをここで指定する */
+function ServerSettings() {
+  const [url, setUrl] = useState(getTalkServerUrl());
+  const [status, setStatus] = useState<'idle' | 'checking' | 'ok' | 'ng'>('idle');
+
+  const commit = () => {
+    setTalkServerUrl(url);
+    setUrl(getTalkServerUrl());
+  };
+
+  const check = async () => {
+    setTalkServerUrl(url);
+    setStatus('checking');
+    try {
+      const res = await fetch(`${getTalkServerUrl()}/healthz`);
+      setStatus(res.ok ? 'ok' : 'ng');
+    } catch {
+      setStatus('ng');
+    }
+  };
+
+  return (
+    <div className="parent-settings">
+      <h2 className="parent-section-title">せってい</h2>
+      <label className="parent-field">
+        対話サーバーURL(Tailscale経由のMac miniアドレス)
+        <input
+          className="parent-input"
+          type="url"
+          value={url}
+          placeholder="http://mac-mini.tailnet-xxxx.ts.net:8788"
+          onChange={(e) => setUrl(e.target.value)}
+          onBlur={commit}
+        />
+      </label>
+      <div className="parent-page-actions">
+        <button className="parent-mini-button pressable" onClick={() => void check()}>
+          せつぞくかくにん
+        </button>
+        <span className="parent-page-meta">
+          {status === 'checking' && '確認中…'}
+          {status === 'ok' && '✅ つながりました'}
+          {status === 'ng' && '❌ つながりません(サーバー起動とURLを確認)'}
+        </span>
+      </div>
     </div>
   );
 }

@@ -1,36 +1,50 @@
 import { useEffect, useRef, useState } from 'react';
-import { generateBook } from '../../lib/generateBook';
-import { iconEmoji } from '../../lib/icons';
-import type { DraftPage } from './draft';
+import { generateBookFromTalk } from '../../lib/generateBook';
+import type { BookJobStatus, TalkTurn } from '../../lib/talkApi';
+import type { Draft, DraftPage } from './draft';
 import { BigButton } from '../../components/BigButton';
 import './generating.css';
 
 interface GeneratingProps {
-  iconKeywords: string[];
-  onDone: (title: string, pages: DraftPage[]) => void;
+  conversation: TalkTurn[];
+  onDone: (title: string, pages: DraftPage[], characterRef: Draft['characterRef']) => void;
   onBack: () => void;
 }
 
-const MESSAGES = [
-  'まほうつかいが えほんを つくっているよ…',
-  'おはなしを かんがえているよ…',
-  'えを かいているよ…',
-  'こえを ふきこんでいるよ…',
-  'もうすこしで できあがり…',
-];
+/** ジョブ状況ごとの、精のようすとメッセージ */
+const STATUS_VIEW: Record<BookJobStatus, { fairy: string; message: string }> = {
+  story: { fairy: '/fairy/fairy-thinking.png', message: 'おはなしを かんがえているよ…' },
+  character: { fairy: '/fairy/fairy-thinking.png', message: 'しゅじんこうを かいているよ…' },
+  pages: { fairy: '/fairy/fairy-normal.png', message: 'えを かいているよ…' },
+  audio: { fairy: '/fairy/fairy-happy.png', message: 'こえを ふきこんでいるよ…' },
+  done: { fairy: '/fairy/fairy-cheer.png', message: 'できあがり!' },
+  error: { fairy: '/fairy/fairy-surprised.png', message: '' },
+};
 
-/** Step2: 生成中のローディング画面。API呼び出し中は選んだアイコンがくるくる回る */
-export function Generating({ iconKeywords, onDone, onBack }: GeneratingProps) {
-  const [error, setError] = useState<string | null>(null);
-  const [msgIndex, setMsgIndex] = useState(0);
+/**
+ * S3: 生成中画面。えほんの精が絵本を作っている間、
+ * 子どもが答えた内容が順に浮かび上がり、退屈させない。
+ */
+export function Generating({ conversation, onDone, onBack }: GeneratingProps) {
+  const [error, setError] = useState(false);
+  const [status, setStatus] = useState<BookJobStatus>('story');
+  const [progress, setProgress] = useState(0.05);
+  const [answerIndex, setAnswerIndex] = useState(0);
   // 生成は高コストなので、StrictModeの二重実行や再送信を必ず防ぐ
   const startedRef = useRef(false);
 
+  const answers = conversation.map((t) => t.answer).filter((a) => a.trim());
+
   const run = () => {
-    setError(null);
-    void generateBook(iconKeywords)
-      .then((book) => onDone(book.title, book.pages))
-      .catch(() => setError('えほんが つくれなかったよ。もういちど ためしてね。'));
+    setError(false);
+    setStatus('story');
+    setProgress(0.05);
+    void generateBookFromTalk(conversation, (s, p) => {
+      setStatus(s);
+      setProgress(p);
+    })
+      .then((book) => onDone(book.title, book.pages, book.characterRef))
+      .catch(() => setError(true));
   };
 
   useEffect(() => {
@@ -40,34 +54,34 @@ export function Generating({ iconKeywords, onDone, onBack }: GeneratingProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // メッセージを順番に切り替えて退屈させない
+  // 子どもの答えを順番に浮かび上がらせる
   useEffect(() => {
-    if (error) return;
+    if (error || answers.length === 0) return;
     const timer = window.setInterval(() => {
-      setMsgIndex((i) => (i + 1) % MESSAGES.length);
-    }, 4000);
+      setAnswerIndex((i) => (i + 1) % answers.length);
+    }, 2800);
     return () => window.clearInterval(timer);
-  }, [error]);
+  }, [error, answers.length]);
 
   if (error) {
     return (
       <div className="create-step generating-step">
-        <div className="generating-error-emoji" aria-hidden>
-          😢
-        </div>
-        <p className="generating-error-text">{error}</p>
+        <img
+          className="generating-fairy"
+          src={STATUS_VIEW.error.fairy}
+          alt="えほんの精"
+          draggable={false}
+        />
+        <p className="generating-error-text">
+          えほんが つくれなかったよ。
+          <br />
+          もういちど ためしてみてね。
+        </p>
         <div className="generating-error-actions">
           <BigButton color="ghost" silent onClick={onBack}>
             ← もどる
           </BigButton>
-          <BigButton
-            color="primary"
-            silent
-            onClick={() => {
-              startedRef.current = true;
-              run();
-            }}
-          >
+          <BigButton color="primary" silent onClick={run}>
             もういちど
           </BigButton>
         </div>
@@ -75,28 +89,36 @@ export function Generating({ iconKeywords, onDone, onBack }: GeneratingProps) {
     );
   }
 
+  const view = STATUS_VIEW[status];
+
   return (
     <div className="create-step generating-step">
-      <div className="generating-orbit" aria-hidden>
-        <div className="generating-center">✨</div>
-        {iconKeywords.map((k, i) => (
-          <span
-            key={k}
-            className="generating-icon"
-            style={{
-              transform: `rotate(${(360 / iconKeywords.length) * i}deg) translateY(-110px)`,
-            }}
-          >
-            <span
-              style={{ transform: `rotate(-${(360 / iconKeywords.length) * i}deg)`, display: 'inline-block' }}
-            >
-              {iconEmoji(k)}
-            </span>
-          </span>
-        ))}
+      <div className="generating-stage">
+        <img className="generating-fairy" src={view.fairy} alt="えほんの精" draggable={false} />
+        {answers.length > 0 && (
+          <p key={answerIndex} className="generating-answer" aria-hidden>
+            {answers[answerIndex]}…
+          </p>
+        )}
       </div>
-      <p className="generating-message">{MESSAGES[msgIndex]}</p>
-      <p className="generating-hint">ちょっと まっててね(30びょうくらい)</p>
+
+      <p className="generating-message">{view.message}</p>
+
+      <div
+        className="generating-bar"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(progress * 100)}
+      >
+        <div className="generating-bar-fill" style={{ width: `${Math.round(progress * 100)}%` }}>
+          <span className="generating-bar-star" aria-hidden>
+            ✨
+          </span>
+        </div>
+      </div>
+
+      <p className="generating-hint">ちょっと まっててね(1ぷんくらい)</p>
     </div>
   );
 }
