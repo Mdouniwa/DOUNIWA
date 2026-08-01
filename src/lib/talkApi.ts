@@ -1,7 +1,7 @@
 /**
  * Mac mini 対話サーバーとの入出力契約とfetchヘルパー。
  * サーバー側の server/src/contract.ts と必ず一致させること
- * (サーバーは別パッケージのため、既存 generateApi.ts と同じ「契約ファイルを両側に置く」方針)。
+ * (サーバーは別パッケージのため、契約ファイルを両側に置いて一致させる方針)。
  */
 import { getTalkServerUrl } from './serverConfig';
 

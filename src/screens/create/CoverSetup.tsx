@@ -36,16 +36,36 @@ export function CoverSetup({ draft, onChange, onSaved }: CoverSetupProps) {
         // 未設定(旧経路)は録音があれば録音扱い、無ければ生成扱いにしておく
         narrationSource: p.narrationSource ?? (p.audioBlob ? 'recorded' : 'generated'),
       }));
+
+      // 主人公の基準画像は pageIds に含めないPageとして保存する
+      // (再生対象にはならないが、bookIdで紐づくため絵本削除時に一緒に消える)
+      let characterRefImageId: string | undefined;
+      if (draft.characterRef) {
+        characterRefImageId = crypto.randomUUID();
+        pages.push({
+          id: characterRefImageId,
+          bookId,
+          imageBlob: draft.characterRef.imageBlob,
+          thumbBlob: draft.characterRef.thumbBlob,
+          captionText: '',
+          audioBlob: null,
+          audioMime: null,
+          soundEffect: null,
+          narrationSource: 'generated',
+        });
+      }
+
       const book: Book = {
         id: bookId,
         title: draft.title.trim() || THEME_LABELS[draft.theme],
         coverImageId: coverPageId,
         theme: draft.theme,
-        pageIds: pages.map((p) => p.id),
+        pageIds: draft.pages.map((p) => p.id),
         createdAt: now,
         updatedAt: now,
         lastOpenedAt: now,
-        iconKeywords: draft.iconKeywords,
+        conversation: draft.conversation,
+        characterRefImageId,
       };
       await createBookWithPages(book, pages);
       playSound('success');

@@ -1,4 +1,5 @@
 import type { SoundEffect, Theme } from '../../types';
+import type { TalkTurn } from '../../lib/talkApi';
 
 /** 作成フロー中の下書きページ(保存前はメモリ上に保持) */
 export interface DraftPage {
@@ -18,5 +19,8 @@ export interface Draft {
   pages: DraftPage[];
   coverPageId: string | null;
   title: string;
-  iconKeywords: string[]; // 選んだ5つのアイコンキーワード(選択順)
+  /** えほんの精との対話ログ(物語の材料) */
+  conversation: TalkTurn[];
+  /** 主人公の基準画像(参照画像方式の1枚目)。保存時にpageIds外のPageとして格納する */
+  characterRef: { imageBlob: Blob; thumbBlob: Blob } | null;
 }
