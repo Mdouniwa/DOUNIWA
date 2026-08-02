@@ -397,6 +397,17 @@
   pointer-events: none;
 }
 
+/* 背の低い画面(横画面含む): お祝いの精を小さく */
+@media (max-height: 520px) {
+  .done-fairy {
+    width: 160px;
+  }
+
+  .done-title {
+    font-size: 26px;
+  }
+}
+
 .confetti-piece {
   position: absolute;
   top: -20px;

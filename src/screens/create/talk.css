@@ -297,6 +297,31 @@
   }
 }
 
+/* 横画面: 精を小さくし選択肢を4列に(タップ領域88pxは維持、あふれた分は縦スクロール) */
+@media (orientation: landscape) and (max-height: 520px) {
+  .talk-fairy-img {
+    width: 130px;
+  }
+
+  .talk-question {
+    min-height: 60px;
+    padding: 10px 16px;
+  }
+
+  .talk-question-text {
+    font-size: 19px;
+  }
+
+  .talk-choices {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .talk-mic {
+    min-height: 88px;
+    width: min(100%, 300px);
+  }
+}
+
 /* 背の低い端末(iPhone SE等)ではスクロールなしで収まるよう精と余白を詰める */
 @media (max-height: 740px) {
   .talk-screen {

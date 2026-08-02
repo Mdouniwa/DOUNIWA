@@ -128,3 +128,30 @@
 .home-hero-create .home-create-label {
   font-size: 30px;
 }
+
+/* 横画面(低い画面): ロゴ・精を小さく、グリッドを4列にして破綻を防ぐ */
+@media (orientation: landscape) and (max-height: 520px) {
+  .home-logo {
+    width: min(38vw, 260px);
+  }
+
+  .home-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+
+  .home-hero {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 12px 28px;
+    padding-bottom: 8px;
+  }
+
+  .home-hero-fairy {
+    width: 150px;
+  }
+
+  .home-hero-text {
+    font-size: 20px;
+  }
+}
