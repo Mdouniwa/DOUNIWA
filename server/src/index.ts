@@ -44,9 +44,31 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   res.status(500).json({ error: message });
 });
 
-app.listen(config.port, () => {
+const server = app.listen(config.port, () => {
   console.log(`ehon talk server listening on http://0.0.0.0:${config.port}`);
   console.log(
     `models: chat=${config.chatModel} story=${config.storyModel} image=${config.imageModel} tts=${config.ttsModel}`,
   );
 });
+
+// ポート使用中などのlisten失敗は明示的にエラー終了する(exit 0での沈黙死を防ぐ)
+server.on('error', (err) => {
+  console.error('[server] listen error:', err.message);
+  process.exit(1);
+});
+
+// launchdのunload(SIGTERM)やCtrl-C(SIGINT)では接続を閉じてから終了する
+for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(sig, () => {
+    console.log(`[server] ${sig} received, shutting down`);
+    server.close(() => process.exit(0));
+    // 進行中の接続が残っていても数秒で確実に終了する
+    setTimeout(() => process.exit(0), 3000).unref();
+  });
+}
+
+// Node 26ではESMのトップレベル評価が完了すると、サーバハンドルが残っていても
+// イベントループが空と判定されてプロセスが正常終了してしまうことがある
+// (起動ログ直後にexit 0で死ぬ)。トップレベルawaitでモジュール評価を
+// サーバのcloseまで保留し、プロセスの寿命をサーバの寿命に明示的に一致させる。
+await new Promise<void>((resolve) => server.once('close', resolve));
