@@ -10,6 +10,7 @@ import {
   type TalkTurn,
 } from '../../lib/talkApi';
 import { speak, cancelSpeech } from '../../lib/tts';
+import { playAudioBlob, stopAudioPlayback } from '../../lib/audioPlayback';
 import { playSound } from '../../lib/soundEffects';
 import { useRecorder } from '../../hooks/useRecorder';
 import { ART, FAIRY_IMAGES } from '../../lib/artAssets';
@@ -23,32 +24,18 @@ interface TalkScreenProps {
   onQuit: () => void;
 }
 
-/** 精のせりふ音声を再生する。サーバーTTSが無ければWeb Speechにフォールバック */
-function playQuestion(
-  resp: TalkNextResponse,
-  audioRef: { current: HTMLAudioElement | null },
-): Promise<void> {
+/**
+ * 精のせりふ音声を再生する。サーバーTTSが無ければWeb Speechにフォールバック。
+ *
+ * HTMLAudioElement(new Audio())はiOS Safariでユーザージェスチャー外の
+ * play() が不規則に拒否され、マイク録音と交互に使うと「鳴ったり鳴らなかったり」
+ * になるため、解錠済みの共有AudioContext(WebAudio)で再生する。
+ */
+function playQuestion(resp: TalkNextResponse): Promise<void> {
   if (resp.questionAudioBase64) {
-    return new Promise((resolve) => {
-      const blob = base64ToBlob(
-        resp.questionAudioBase64!,
-        resp.questionAudioMime || 'audio/wav',
-      );
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      const finish = () => {
-        URL.revokeObjectURL(url);
-        resolve();
-      };
-      audio.onended = finish;
-      audio.onerror = finish;
-      // iOSで再生がブロックされたらWeb Speechにフォールバック
-      audio.play().catch(() => {
-        URL.revokeObjectURL(url);
-        void speak(resp.question).then(resolve);
-      });
-    });
+    cancelSpeech(); // 選択肢ラベルの読み上げが残っていたら止めてから精のこえを流す
+    const blob = base64ToBlob(resp.questionAudioBase64, resp.questionAudioMime || 'audio/wav');
+    return playAudioBlob(blob).catch(() => speak(resp.question));
   }
   return speak(resp.question);
 }
@@ -67,16 +54,19 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
   const [error, setError] = useState(false);
 
   const recorder = useRecorder();
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const startedRef = useRef(false);
   const historyRef = useRef<TalkTurn[]>([]);
   const currentRef = useRef<TalkNextResponse | null>(null);
   const lastAnswerRef = useRef<TalkNextRequest['answer']>(undefined);
   const doneRef = useRef(false);
+  // マイクの押下状態はrender間で正確に追う必要があるためref
+  // (getUserMedia待ちの間にpointerupが来るとstateのクロージャでは取りこぼす)
+  const pressedRef = useRef(false);
+  const listeningRef = useRef(false);
+  const recordStartRef = useRef(0);
 
   const stopVoice = useCallback(() => {
-    audioRef.current?.pause();
-    audioRef.current = null;
+    stopAudioPlayback();
     cancelSpeech();
   }, []);
 
@@ -110,7 +100,7 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
         setCurrent(resp);
         setBusy(false);
 
-        const playback = playQuestion(resp, audioRef);
+        const playback = playQuestion(resp);
         if (resp.done) {
           doneRef.current = true;
           // 最後のよろこびのせりふを聞かせてから次へ
@@ -136,31 +126,60 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
   useEffect(() => stopVoice, [stopVoice]);
 
   // --- マイク(押している間だけ録音) ---
-  const micDown = async () => {
-    if (busy || listening || doneRef.current) return;
-    stopVoice(); // 精の声を録音に混ぜない
-    const ok = await recorder.start();
-    if (!ok) {
-      setMicDisabled(true); // 権限拒否 → 以後はタップ方式のみで進める
+
+  /** 録音を終了し、十分な長さがあれば送信する */
+  const finishRecording = async () => {
+    if (!listeningRef.current) return;
+    listeningRef.current = false;
+    setListening(false);
+    // 一瞬だけ触れた等のごく短い録音は破棄(無音送信で聞き返しになるのを防ぐ)
+    if (Date.now() - recordStartRef.current < 250) {
+      recorder.cancel();
       return;
     }
-    setListening(true);
-  };
-
-  const micUp = async () => {
-    if (!listening) return;
-    setListening(false);
     const result = await recorder.stop();
-    if (!result) return; // 何も録れていない(一瞬だけ触れた等)は無視
+    if (!result) return; // 何も録れていなければ無視
     playSound('tap');
     const audioBase64 = await blobToBase64(result.blob);
     void sendTurn({ audioBase64, audioMime: result.mime });
   };
 
+  const micDown = async () => {
+    if (busy || pressedRef.current || listeningRef.current || doneRef.current) return;
+    pressedRef.current = true;
+    stopVoice(); // 精の声を録音に混ぜない
+    const ok = await recorder.start();
+    if (!ok) {
+      pressedRef.current = false;
+      setMicDisabled(true); // 権限拒否 → 以後はタップ方式のみで進める
+      return;
+    }
+    recordStartRef.current = Date.now();
+    listeningRef.current = true;
+    setListening(true);
+    // getUserMedia待ちの間に指が離れていた場合はここで終了する
+    // (pointerupが先に来ると micUp 側では録音開始前のため処理できない)
+    if (!pressedRef.current) {
+      void finishRecording();
+    }
+  };
+
+  const micUp = () => {
+    if (!pressedRef.current) return;
+    pressedRef.current = false;
+    // 録音開始前(getUserMedia待ち)なら micDown 側が終了処理を引き継ぐ
+    if (!listeningRef.current) return;
+    void finishRecording();
+  };
+
   const tapChoice = (label: string) => {
     if (busy || doneRef.current) return;
     playSound('tap');
+    // 選んだことばをローカルTTSで読み上げる(文字が読めない子への即時フィードバック)。
+    // sendTurn冒頭のstopVoice()に消されないよう、sendTurn開始後に呼ぶ。
+    // 進行は読み上げを待たない(サーバー応答が来たら精のこえが引き継ぐ)。
     void sendTurn({ text: label });
+    void speak(label);
   };
 
   const answeredCount = history.length;
@@ -234,9 +253,10 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
             <button
               className={`talk-mic pressable${listening ? ' is-listening' : ''}`}
               onPointerDown={() => void micDown()}
-              onPointerUp={() => void micUp()}
-              onPointerLeave={() => void micUp()}
-              onPointerCancel={() => void micUp()}
+              onPointerUp={micUp}
+              onPointerLeave={micUp}
+              onPointerCancel={micUp}
+              onLostPointerCapture={micUp}
               onContextMenu={(e) => e.preventDefault()}
               disabled={busy && !listening}
               aria-label="おしてるあいだ おはなしできるよ"

@@ -63,8 +63,8 @@ ${log}
 - 1ページの文は1〜2文の短い、ひらがな中心のやさしい日本語。
 - 安全で温かい内容。こわい・あぶない・暴力的な表現は入れない。
 - 会話に子ども自身が登場していたら、お話にも登場させること。
-- characterDescription: 主人公の見た目の詳細な説明(色・服・特徴・大きさ)。挿絵の基準画像を作るために使う。
-- 各ページの imagePrompt: そのページの場面の日本語説明(登場するもの・場所・動きを具体的に)。主人公は「主人公」と書くだけでよい(見た目は基準画像で揃えるため繰り返さない)。`;
+- characterDescription: 主人公の見た目の詳細な説明(髪型・髪の色・服装・色・特徴・大きさを具体的に)。挿絵の基準画像を作るために使う。
+- 各ページの imagePrompt: そのページの場面の日本語説明(登場するもの・場所・動きを具体的に)。主人公は「主人公」と書くだけでよい(見た目は基準画像とcharacterDescriptionで揃える)。`;
 
   const resp = await getAI().models.generateContent({
     model: config.storyModel,
@@ -109,18 +109,26 @@ async function generateCharacterRef(
   const resp = await getAI().models.generateContent({
     model: config.imageModel,
     contents:
-      `絵本の主人公のキャラクターシート。全身がはっきり見える1枚の立ち姿。\n` +
+      `絵本の主人公のキャラクターシート。同一キャラクターの全身の立ち姿を正面から、はっきり大きく描く。\n` +
       `主人公: ${characterDescription}\n背景はシンプルな1色。${STYLE_SUFFIX}`,
-    config: { responseModalities: ['IMAGE'] },
+    config: {
+      responseModalities: ['IMAGE'],
+      imageConfig: { aspectRatio: '3:4' },
+    },
   });
   const img = firstInlineData(resp);
   if (!img) throw new Error('character reference image generation returned no image');
   return { data: img.data, mimeType: img.mimeType || 'image/png' };
 }
 
-/** ページ挿絵を生成する。基準画像を参照画像として渡し、キャラクターの見た目を固定する */
+/**
+ * ページ挿絵を生成する。基準画像を参照画像として渡し、キャラクターの見た目を固定する。
+ * 参照画像だけでは場面が複雑なとき(他の登場人物・背景が多いとき)に追従が
+ * 落ちるため、characterDescription のテキストも併用して二重に固定する。
+ */
 async function generatePageImage(
   imagePrompt: string,
+  characterDescription: string,
   characterRef: { data: string; mimeType: string },
 ): Promise<{ data: string; mimeType: string }> {
   const resp = await getAI().models.generateContent({
@@ -132,13 +140,20 @@ async function generatePageImage(
           { inlineData: { data: characterRef.data, mimeType: characterRef.mimeType } },
           {
             text:
-              `添付画像は絵本の主人公です。まったく同じキャラクター(同じ顔・色・服・画風)を登場させて、次の場面を描いてください。\n` +
-              `場面: ${imagePrompt}${STYLE_SUFFIX}\n横長4:3の絵本の挿絵。`,
+              `添付した参照画像は、この絵本の主人公のキャラクターシートです。\n` +
+              `【最重要】場面の中の主人公は、参照画像とまったく同一のキャラクターとして描くこと。` +
+              `髪型・髪の色・肌の色・目・服装・色づかい・体型・画風を参照画像と厳密に一致させること。` +
+              `参照画像とちがう見た目(別の髪型・別の色の髪・別の服)にしてはならない。\n` +
+              `主人公の見た目(参照画像と同じ): ${characterDescription}\n` +
+              `場面: ${imagePrompt}${STYLE_SUFFIX}`,
           },
         ],
       },
     ],
-    config: { responseModalities: ['IMAGE'] },
+    config: {
+      responseModalities: ['IMAGE'],
+      imageConfig: { aspectRatio: '4:3' },
+    },
   });
   const img = firstInlineData(resp);
   if (!img) throw new Error('page image generation returned no image');
@@ -164,7 +179,9 @@ async function runPipeline(jobId: string, conversation: TalkTurn[]): Promise<voi
     // 3) 各ページの挿絵(参照画像方式)。レート制限を避けるため順次生成
     const images: Array<{ data: string; mimeType: string }> = [];
     for (let i = 0; i < story.pages.length; i++) {
-      images.push(await generatePageImage(story.pages[i].imagePrompt, characterRef));
+      images.push(
+        await generatePageImage(story.pages[i].imagePrompt, story.characterDescription, characterRef),
+      );
       update(jobId, { progress: 0.3 + 0.5 * ((i + 1) / story.pages.length) });
     }
     update(jobId, { status: 'audio', progress: 0.8 });

@@ -42,6 +42,7 @@ const SYSTEM_PROMPT = `あなたは「えほんの精」。てのひらに の�
 - こどもの こたえが しつもんと ずれていても ぜったいに ひていしない。その ないようを おはなしの ざいりょうとして ひろって すすめる。
 - 「わからない」「うーん」のような こたえや むごんの ときは、たのしい れいを 2〜3こ あげて たすける。
 - choices は いまの しつもんに タップで こたえられる せんたくし4つ。えもじ1つ + みじかい ことば(ひらがな、6もじいない)。こどもが よろこびそうな バラエティに すること。
+- えもじは かならず カラーひょうじの かんぜんな かたちで 出力すること(異体字セレクタ U+FE0F が ひつような えもじには かならず つける。例: 🏞️ ✈️ ☀️)。
 - expression は 精の ひょうじょう: happy(うれしい)/ thinking(かんがえる)/ surprised(びっくり)/ cheer(かんせいを よろこぶ)/ normal。こたえに すなおに はんのうして えらぶ。
 - ざいりょうが ${QUESTION_TARGET}こ そろったら done=true。しめの せりふは「すてきな おはなしが できたよ! えほんに するね!」のように よろこぶ(expression=cheer)。done=true のとき choices は から配列で よい。
 
@@ -94,7 +95,25 @@ function historyText(history: TalkTurn[]): string {
   return history.map((t) => `精: ${t.question}\n子ども: ${t.answer}`).join('\n');
 }
 
-/** モデル出力の choices を安全な形に整える(欠け・過剰・空文字対策) */
+/**
+ * 絵文字を正規化する。モデルが異体字セレクタ(VS16, U+FE0F)を欠いた
+ * 絵文字(例: "🏞" "✈")を返すと、iOSで白黒の記号や豆腐になるため、
+ * 単一コードポイントでVS16が無いものには補う。ZWJ絵文字・肌色つき等の
+ * 複合シーケンスはそのまま通す(VS16は不要な絵文字に付いても無視される)。
+ */
+const VS16 = '\uFE0F';
+
+function normalizeEmoji(raw: string): string {
+  const emoji = raw.trim();
+  if (!emoji) return `⭐${VS16}`; // ⭐️
+  const codePoints = [...emoji];
+  if (codePoints.length === 1 && !emoji.includes(VS16)) {
+    return emoji + VS16;
+  }
+  return emoji;
+}
+
+/** モデル出力の choices を安全な形に整える(欠け・過剰・空文字・VS16欠け対策) */
 function sanitizeChoices(choices: unknown): TalkChoice[] {
   if (!Array.isArray(choices)) return [];
   return choices
@@ -106,7 +125,8 @@ function sanitizeChoices(choices: unknown): TalkChoice[] {
         typeof (c as TalkChoice).label === 'string' &&
         (c as TalkChoice).label.length > 0,
     )
-    .slice(0, 4);
+    .slice(0, 4)
+    .map((c) => ({ emoji: normalizeEmoji(c.emoji), label: c.label }));
 }
 
 export async function talkNext(req: TalkNextRequest): Promise<TalkNextResponse> {
