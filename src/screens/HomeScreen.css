@@ -99,8 +99,9 @@
   color: oklch(38% 0.08 50);
   text-align: center;
   text-wrap: balance;
-  /* 「えほんを」の途中で折り返さない(スペース位置でのみ改行) */
+  /* スペース位置での改行を優先。スペース無し長文は任意位置で折り返す(はみ出し防止) */
   word-break: keep-all;
+  overflow-wrap: anywhere;
   min-height: 100px;
   display: flex;
   align-items: center;

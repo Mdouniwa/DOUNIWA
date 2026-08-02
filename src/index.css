@@ -61,6 +61,14 @@ body,
   height: 100%;
 }
 
+/* 横スクロールの発生を根元で禁止する(安全網)。
+   個別のはみ出し原因(word-break等)は各所で修正済みだが、
+   スマホでドキュメント全体が横に動く事故を構造的に防ぐ */
+html,
+body {
+  overflow-x: hidden;
+}
+
 body {
   font-family:
     'Hiragino Maru Gothic ProN', 'Hiragino Kaku Gothic ProN', 'BIZ UDGothic',

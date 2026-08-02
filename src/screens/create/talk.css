@@ -172,13 +172,17 @@
 
 .talk-question-text {
   margin: 0;
+  max-width: 100%;
   font-size: 27px;
   font-weight: 700;
   line-height: 1.5;
   text-align: center;
   color: var(--color-primary-dark);
   text-wrap: balance;
+  /* スペース位置での改行を優先しつつ、スペース無しの長文は任意の位置で折り返す
+     (keep-all単独だと改行できず吹き出し・画面からはみ出す) */
   word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .talk-question-thinking {
@@ -222,9 +226,12 @@
   flex-shrink: 0;
 }
 
-/* 内容が入り切らないときは画面内スクロールで全文を読めるようにする(切り捨て禁止) */
+/* 内容が入り切らないときは縦スクロールで全文を読めるようにする(切り捨て禁止)。
+   overflow-yだけ指定するとoverflow-xがautoに計算され意図しない横スクロール
+   コンテナになるため、横は明示的に禁止する */
 .talk-screen {
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* マイク: 木製看板風の立体プレート(タップで録音開始→もう一度タップで送信) */
