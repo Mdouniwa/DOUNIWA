@@ -7,13 +7,45 @@
   gap: 8px;
 }
 
-/* --- ヘッダー: 進捗(花) + やめる --- */
+/* --- ヘッダー: もどる + 進捗(花) + やめる --- */
 .talk-header {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ひとつまえに戻る(タップ領域88px以上) */
+.talk-back {
+  min-width: 88px;
+  min-height: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: oklch(99% 0.006 340 / 0.9);
+  box-shadow: var(--shadow-card);
+  color: var(--color-text-light);
+  cursor: pointer;
+}
+
+.talk-back:disabled {
+  opacity: 0.45;
+}
+
+.talk-back-icon {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.talk-back-label {
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .talk-progress {
@@ -64,6 +96,7 @@
 /* --- えほんの精 --- */
 .talk-fairy {
   margin-top: 4px;
+  flex-shrink: 0;
   animation: talk-fairy-float 3.2s ease-in-out infinite;
 }
 
@@ -100,10 +133,14 @@
   }
 }
 
-/* --- 質問文: 立体的な吹き出し(精のせりふ) --- */
+/* --- 質問文: 立体的な吹き出し(精のせりふ) ---
+   高さは内容に応じて自動で伸びる。フレックス圧縮で潰れて文字が
+   はみ出さないよう flex-shrink:0 を必ず指定する(切り捨て禁止) */
 .talk-question {
   position: relative;
   min-height: 96px;
+  height: auto;
+  flex-shrink: 0;
   width: min(100%, 480px);
   display: flex;
   flex-direction: column;
@@ -182,6 +219,12 @@
   align-items: center;
   gap: 14px;
   padding-bottom: 8px;
+  flex-shrink: 0;
+}
+
+/* 内容が入り切らないときは画面内スクロールで全文を読めるようにする(切り捨て禁止) */
+.talk-screen {
+  overflow-y: auto;
 }
 
 /* マイク: 木製看板風の立体プレート(タップで録音開始→もう一度タップで送信) */
@@ -306,10 +349,22 @@
   opacity: 0.9;
 }
 
-/* 横幅が狭い端末では選択肢を2列に */
+/* 横幅が狭い端末では選択肢を2列に、進捗の補助テキストは花だけで伝える */
 @media (max-width: 480px) {
   .talk-choices {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .talk-progress-text {
+    display: none;
+  }
+
+  .talk-progress {
+    padding: 8px 12px;
+  }
+
+  .talk-progress-flower {
+    font-size: 19px;
   }
 }
 

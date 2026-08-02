@@ -21,6 +21,14 @@ import type {
 /** 集める材料の数(=質問数の目安)。骨格: 主役→場所→していること→だれと→さいご */
 export const QUESTION_TARGET = 5;
 
+/**
+ * 1問目はクライアント側で固定表示される(サーバーは呼ばれない)。
+ * クライアント側 src/lib/talkApi.ts の FIRST_QUESTION と一致させること。
+ * 1問目への答えを受けるとき(history が空のとき)の文脈として使う。
+ */
+export const FIRST_QUESTION =
+  'こんにちは! いっしょに えほんを つくろう! さいしょに、おはなしの しゅやくは だれに する?';
+
 const EXPRESSIONS: FairyExpression[] = ['normal', 'happy', 'thinking', 'surprised', 'cheer'];
 
 const SYSTEM_PROMPT = `あなたは「えほんの精」。てのひらに のるくらいの ちいさな 妖精の女の子です。
@@ -37,7 +45,9 @@ const SYSTEM_PROMPT = `あなたは「えほんの精」。てのひらに の�
 
 # きまり
 - せりふは ひらがな中心の みじかい やさしい にほんご。1〜2ぶん。ことばの あいだに はんかくスペースを いれて よみやすくする。
-- まえの こたえを かならず うれしそうに うけとめてから(あいづち)、つぎの しつもんを する。あいづちは こたえの ないように ふれること。
+- まえの こたえを かならず うれしそうに うけとめてから(あいづち)、つぎの しつもんを する。
+- 【重要】あいづちは「こんかいの メッセージで つたえられた こたえ」だけに ふれること。まえの ターンの こたえを あいづちで くりかえしては いけない。
+- 【重要】こたえを うけとめたら、おなじ ざいりょうを もういちど きかず、かならず つぎの ざいりょうの しつもんに すすむこと(retry=true の ききかえしを のぞく)。
 - おなじ いいまわしを くりかえさない。かいわとして しぜんに つなげる。
 - こどもの こたえが しつもんと ずれていても ぜったいに ひていしない。その ないようを おはなしの ざいりょうとして ひろって すすめる。
 - 「わからない」「うーん」のような こたえや むごんの ときは、たのしい れいを 2〜3こ あげて たすける。
@@ -49,6 +59,7 @@ const SYSTEM_PROMPT = `あなたは「えほんの精」。てのひらに の�
 # 音声のこたえについて
 こどもの こえの 録音が そえられている ばあい、まず その ないようを きいて、こどもが いった ことを answerText に にほんごで かく(いいまちがいは やさしく くみとる)。
 きこえない・むごん・ざつおんだけの ばあいは answerText を null、retry を true にして、question は「ごめんね、もういっかい いってくれる?」のような やさしい ききかえしに する。
+【重要】きこえなかったときに、そうぞうや まえの こたえの コピーで answerText を つくっては いけない(かならず null に する)。
 テキストの こたえの ばあいは answerText に そのまま いれて、retry は false。
 
 かならず しじされた JSON だけを かえすこと。`;
@@ -91,7 +102,8 @@ interface ModelReply {
 
 /** 会話履歴を人が読めるテキストに直す(モデルへの入力用) */
 function historyText(history: TalkTurn[]): string {
-  if (history.length === 0) return '(まだ会話は始まっていない)';
+  // 1問目はクライアント固定のため、historyが空でも精の1問目を文脈に含める
+  if (history.length === 0) return `精: ${FIRST_QUESTION}`;
   return history.map((t) => `精: ${t.question}\n子ども: ${t.answer}`).join('\n');
 }
 
@@ -186,7 +198,13 @@ export async function talkNext(req: TalkNextRequest): Promise<TalkNextResponse> 
     throw new Error('talk model returned invalid structure');
   }
 
-  const retry = Boolean(reply.retry);
+  let retry = Boolean(reply.retry);
+  // 進行ズレ対策: 音声回答なのに解釈テキストが空なら、モデルの判定によらず
+  // 必ず聞き返し扱いにする(答えが反映されないまま進捗だけ進むのを防ぐ)
+  if (req.answer?.audioBase64 && !reply.answerText?.trim() && !retry) {
+    retry = true;
+    reply.question = 'ごめんね、うまく きこえなかったみたい。もういっかい いってくれる?';
+  }
   const answered = Boolean(req.answer) && !retry;
   const answeredCount = history.length + (answered ? 1 : 0);
   // 安全弁: モデルがdoneを出し損ねても質問しすぎない

@@ -14,7 +14,7 @@ export async function synthesizeSpeech(
     const resp = await getAI().models.generateContent({
       model: config.ttsModel,
       // Gemini TTSは文頭の自然言語指示で話し方を制御できる(指示部分は読み上げられない)
-      contents: `ちいさな子どもに やさしく ゆっくり、うれしそうに はなしかける こえで いってください: ${text}`,
+      contents: `${config.ttsStyle}: ${text}`,
       config: {
         responseModalities: ['AUDIO'],
         speechConfig: {

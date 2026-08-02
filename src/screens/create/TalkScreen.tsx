@@ -4,6 +4,8 @@ import {
   base64ToBlob,
   blobToBase64,
   QUESTION_TARGET,
+  FIRST_QUESTION,
+  FIRST_QUESTION_AUDIO,
   type FairyExpression,
   type TalkNextRequest,
   type TalkNextResponse,
@@ -22,6 +24,38 @@ interface TalkScreenProps {
   onDone: (conversation: TalkTurn[]) => void;
   /** やめる(ホームへ) */
   onQuit: () => void;
+}
+
+/**
+ * 1問目は固定(サーバーを呼ばず待ち時間ゼロで対話を始める)。
+ * 音声は事前生成した静的ファイル(public/audio/)を使う。
+ */
+const FIRST_RESPONSE: TalkNextResponse = {
+  answerText: null,
+  retry: false,
+  question: FIRST_QUESTION,
+  questionAudioBase64: null,
+  questionAudioMime: null,
+  choices: [
+    { emoji: '🐻', label: 'どうぶつ' },
+    { emoji: '🚂', label: 'のりもの' },
+    { emoji: '👨‍👩‍👧', label: 'かぞく' },
+    { emoji: '🧒', label: 'おともだち' },
+  ],
+  expression: 'happy',
+  remaining: QUESTION_TARGET,
+  done: false,
+};
+
+/** 1問目の固定音声を再生(取得や再生に失敗したらWeb Speechへ) */
+async function playFirstQuestion(): Promise<void> {
+  try {
+    const res = await fetch(FIRST_QUESTION_AUDIO);
+    if (!res.ok) throw new Error(`audio fetch failed (${res.status})`);
+    await playAudioBlob(await res.blob());
+  } catch {
+    await speak(FIRST_QUESTION);
+  }
 }
 
 /**
@@ -62,6 +96,8 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
   const doneRef = useRef(false);
   // 開始/停止の非同期処理中に連打されても二重実行しないためのガード
   const micBusyRef = useRef(false);
+  // 「ひとつまえ」用: 回答済みの各質問のレスポンスを積む(history と同じ長さ)
+  const responseStackRef = useRef<TalkNextResponse[]>([]);
 
   const stopVoice = useCallback(() => {
     stopAudioPlayback();
@@ -91,6 +127,8 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
           };
           historyRef.current = [...historyRef.current, turn];
           setHistory(historyRef.current);
+          // 「ひとつまえ」で戻れるよう、いま答えた質問のレスポンスを積む
+          responseStackRef.current = [...responseStackRef.current, currentRef.current];
         }
         setFailCount((prev) => (resp.retry ? prev + 1 : 0));
 
@@ -112,11 +150,15 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
     [failCount, onDone, stopVoice],
   );
 
-  // 最初の質問(StrictModeの二重実行を防ぐ)
+  // 1問目は固定なのでサーバーを呼ばず、待ち時間ゼロで表示する
+  // (StrictModeの二重実行を防ぐ)
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
-    void sendTurn(undefined);
+    currentRef.current = FIRST_RESPONSE;
+    setCurrent(FIRST_RESPONSE);
+    setBusy(false);
+    void playFirstQuestion();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -166,6 +208,30 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
     void sendTurn({ text: label });
   };
 
+  /** ひとつまえの質問に戻り、直前の回答を取り消してやり直す */
+  const goBack = () => {
+    if (busy || doneRef.current) return;
+    const stack = responseStackRef.current;
+    if (stack.length === 0) return;
+    if (recording) {
+      recorder.cancel();
+      setRecording(false);
+    }
+    playSound('tap');
+    stopVoice();
+    const prev = stack[stack.length - 1];
+    responseStackRef.current = stack.slice(0, -1);
+    historyRef.current = historyRef.current.slice(0, -1);
+    setHistory(historyRef.current);
+    setFailCount(0);
+    setError(false);
+    currentRef.current = prev;
+    setCurrent(prev);
+    // 戻った質問を読み直す(1問目は固定音声)
+    if (prev === FIRST_RESPONSE) void playFirstQuestion();
+    else void playQuestion(prev);
+  };
+
   const answeredCount = history.length;
   const expression: FairyExpression = busy
     ? 'thinking'
@@ -178,6 +244,20 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
     <div className="screen talk-screen has-art-bg">
       <ArtBg src={ART.bgTalk} />
       <header className="talk-header">
+        {/* ひとつまえに戻る(1問目では戻り先がないので表示しない) */}
+        {history.length > 0 && !current?.done ? (
+          <button
+            className="talk-back pressable"
+            onClick={goBack}
+            disabled={busy}
+            aria-label="ひとつまえの しつもんに もどる"
+          >
+            <span className="talk-back-icon" aria-hidden>
+              ↩️
+            </span>
+            <span className="talk-back-label">ひとつまえ</span>
+          </button>
+        ) : null}
         {/* 進捗: 数字が読めなくても分かる花の数 + 補助テキスト */}
         <div
           className="talk-progress"

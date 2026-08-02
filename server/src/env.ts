@@ -38,6 +38,14 @@ export const config = {
   imageModel: process.env.IMAGE_MODEL || 'gemini-3.1-flash-image',
   /** 音声合成: 感情表現を自然言語で指示できる日本語高品質TTS */
   ttsModel: process.env.TTS_MODEL || 'gemini-3.1-flash-tts-preview',
-  /** TTSのプリセット声(やさしい女性声) */
-  ttsVoice: process.env.TTS_VOICE || 'Leda',
+  /**
+   * TTSのプリセット声。落ち着いた大人の女性声(公式説明: Gentle)。
+   * 候補比較: Leda=194Hz(幼め) / Sulafat=218Hz / Achernar=222Hz / Vindemiatrix=168Hz
+   * → 最も低く穏やかな Vindemiatrix を既定にする(儚げな妖精のビジュアルに合わせる)
+   */
+  ttsVoice: process.env.TTS_VOICE || 'Vindemiatrix',
+  /** TTSの話し方指示(文頭に付ける自然言語スタイル。読み上げられない) */
+  ttsStyle:
+    process.env.TTS_STYLE ||
+    'やさしく、おだやかに、少し低めの落ち着いたトーンで、ゆっくり温かく はなしかける こえで いってください',
 } as const;

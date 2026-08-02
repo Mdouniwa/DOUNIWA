@@ -75,6 +75,18 @@ export interface BookJobResponse {
 /** 質問数の目安(進捗の花の数。サーバー側 QUESTION_TARGET と一致させる) */
 export const QUESTION_TARGET = 5;
 
+/**
+ * 1問目は固定(サーバーを呼ばず待ち時間ゼロで対話を始める)。
+ * サーバー側 FIRST_QUESTION と一致させること。
+ * 読み上げ音声は scripts/generate-voice.mjs で事前生成した
+ * public/audio/first-question.m4a を同梱している。
+ */
+export const FIRST_QUESTION =
+  'こんにちは! いっしょに えほんを つくろう! さいしょに、おはなしの しゅやくは だれに する?';
+
+/** 1問目の固定音声のパス */
+export const FIRST_QUESTION_AUDIO = '/audio/first-question.m4a';
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${getTalkServerUrl()}${path}`, {
     method: 'POST',

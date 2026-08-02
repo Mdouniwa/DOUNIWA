@@ -11,7 +11,7 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       workbox: {
         // 端末内完結アプリ: 全アセットをprecacheしてオフライン完全動作
-        globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,webp,m4a,woff2}'],
         navigateFallback: 'index.html',
       },
       manifest: {
