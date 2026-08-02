@@ -53,7 +53,8 @@ async function playFirstQuestion(): Promise<void> {
     const res = await fetch(FIRST_QUESTION_AUDIO);
     if (!res.ok) throw new Error(`audio fetch failed (${res.status})`);
     await playAudioBlob(await res.blob());
-  } catch {
+  } catch (err) {
+    console.error('[talk] 固定1問目の音声再生に失敗、Web Speechへフォールバック:', err);
     await speak(FIRST_QUESTION);
   }
 }
@@ -67,9 +68,12 @@ async function playFirstQuestion(): Promise<void> {
  */
 function playQuestion(resp: TalkNextResponse): Promise<void> {
   if (resp.questionAudioBase64) {
-    cancelSpeech(); // 選択肢ラベルの読み上げが残っていたら止めてから精のこえを流す
+    cancelSpeech();
     const blob = base64ToBlob(resp.questionAudioBase64, resp.questionAudioMime || 'audio/wav');
-    return playAudioBlob(blob).catch(() => speak(resp.question));
+    return playAudioBlob(blob).catch((err) => {
+      console.error('[talk] せりふ音声の再生に失敗、Web Speechへフォールバック:', err);
+      return speak(resp.question);
+    });
   }
   return speak(resp.question);
 }
