@@ -42,13 +42,14 @@ function playQuestion(resp: TalkNextResponse): Promise<void> {
 
 /**
  * S2: 対話画面(このアプリの心臓部)。
- * えほんの精が質問し、子どもは「押しっぱなしマイク」でも「選択肢タップ」でも答えられる。
+ * えほんの精が質問し、子どもは「マイク(タップで録音開始→タップで送信)」でも
+ * 「選択肢タップ」でも答えられる。
  */
 export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
   const [history, setHistory] = useState<TalkTurn[]>([]);
   const [current, setCurrent] = useState<TalkNextResponse | null>(null);
   const [busy, setBusy] = useState(true); // サーバー待ち(精が考え中)
-  const [listening, setListening] = useState(false); // マイク押下中
+  const [recording, setRecording] = useState(false); // 録音中(トグル)
   const [failCount, setFailCount] = useState(0);
   const [micDisabled, setMicDisabled] = useState(false); // マイク権限拒否時
   const [error, setError] = useState(false);
@@ -59,11 +60,8 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
   const currentRef = useRef<TalkNextResponse | null>(null);
   const lastAnswerRef = useRef<TalkNextRequest['answer']>(undefined);
   const doneRef = useRef(false);
-  // マイクの押下状態はrender間で正確に追う必要があるためref
-  // (getUserMedia待ちの間にpointerupが来るとstateのクロージャでは取りこぼす)
-  const pressedRef = useRef(false);
-  const listeningRef = useRef(false);
-  const recordStartRef = useRef(0);
+  // 開始/停止の非同期処理中に連打されても二重実行しないためのガード
+  const micBusyRef = useRef(false);
 
   const stopVoice = useCallback(() => {
     stopAudioPlayback();
@@ -125,61 +123,47 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
   // 画面を離れるとき音声を止める
   useEffect(() => stopVoice, [stopVoice]);
 
-  // --- マイク(押している間だけ録音) ---
-
-  /** 録音を終了し、十分な長さがあれば送信する */
-  const finishRecording = async () => {
-    if (!listeningRef.current) return;
-    listeningRef.current = false;
-    setListening(false);
-    // 一瞬だけ触れた等のごく短い録音は破棄(無音送信で聞き返しになるのを防ぐ)
-    if (Date.now() - recordStartRef.current < 250) {
-      recorder.cancel();
-      return;
+  // --- マイク(タップで録音開始 → もう一度タップで終了・送信のトグル方式) ---
+  // 押しっぱなし方式はiOS Safariのポインタイベントが不安定なため使わない。
+  // 状態はrecordingの1つだけ。clickイベントなのでレースが起きない素直な実装。
+  const toggleMic = async () => {
+    if (micBusyRef.current || doneRef.current) return;
+    micBusyRef.current = true;
+    try {
+      if (recording) {
+        // 2回目のタップ: 録音終了 → 自動送信
+        setRecording(false);
+        playSound('tap');
+        const result = await recorder.stop();
+        if (!result) return; // 何も録れていなければ無視(次のタップでやり直せる)
+        const audioBase64 = await blobToBase64(result.blob);
+        void sendTurn({ audioBase64, audioMime: result.mime });
+      } else {
+        // 1回目のタップ: 録音開始
+        if (busy) return;
+        stopVoice(); // 精の声を録音に混ぜない
+        playSound('tap');
+        const ok = await recorder.start();
+        if (!ok) {
+          setMicDisabled(true); // 権限拒否 → 以後はタップ方式のみで進める
+          return;
+        }
+        setRecording(true);
+      }
+    } finally {
+      micBusyRef.current = false;
     }
-    const result = await recorder.stop();
-    if (!result) return; // 何も録れていなければ無視
-    playSound('tap');
-    const audioBase64 = await blobToBase64(result.blob);
-    void sendTurn({ audioBase64, audioMime: result.mime });
-  };
-
-  const micDown = async () => {
-    if (busy || pressedRef.current || listeningRef.current || doneRef.current) return;
-    pressedRef.current = true;
-    stopVoice(); // 精の声を録音に混ぜない
-    const ok = await recorder.start();
-    if (!ok) {
-      pressedRef.current = false;
-      setMicDisabled(true); // 権限拒否 → 以後はタップ方式のみで進める
-      return;
-    }
-    recordStartRef.current = Date.now();
-    listeningRef.current = true;
-    setListening(true);
-    // getUserMedia待ちの間に指が離れていた場合はここで終了する
-    // (pointerupが先に来ると micUp 側では録音開始前のため処理できない)
-    if (!pressedRef.current) {
-      void finishRecording();
-    }
-  };
-
-  const micUp = () => {
-    if (!pressedRef.current) return;
-    pressedRef.current = false;
-    // 録音開始前(getUserMedia待ち)なら micDown 側が終了処理を引き継ぐ
-    if (!listeningRef.current) return;
-    void finishRecording();
   };
 
   const tapChoice = (label: string) => {
     if (busy || doneRef.current) return;
+    // 録音中に選択肢をタップしたら、録音は破棄してタップの答えを優先する
+    if (recording) {
+      recorder.cancel();
+      setRecording(false);
+    }
     playSound('tap');
-    // 選んだことばをローカルTTSで読み上げる(文字が読めない子への即時フィードバック)。
-    // sendTurn冒頭のstopVoice()に消されないよう、sendTurn開始後に呼ぶ。
-    // 進行は読み上げを待たない(サーバー応答が来たら精のこえが引き継ぐ)。
     void sendTurn({ text: label });
-    void speak(label);
   };
 
   const answeredCount = history.length;
@@ -246,25 +230,24 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
         )}
       </div>
 
-      {/* 答え方: マイク(押しっぱなし) + 選択肢タップ。常に両方使える */}
+      {/* 答え方: マイク(タップで開始/終了) + 選択肢タップ。常に両方使える */}
       {!current?.done && (
         <div className={`talk-answers${bigChoices ? ' talk-answers--big' : ''}`}>
           {!micDisabled && (
             <button
-              className={`talk-mic pressable${listening ? ' is-listening' : ''}`}
-              onPointerDown={() => void micDown()}
-              onPointerUp={micUp}
-              onPointerLeave={micUp}
-              onPointerCancel={micUp}
-              onLostPointerCapture={micUp}
+              className={`talk-mic pressable${recording ? ' is-recording' : ''}`}
+              onClick={() => void toggleMic()}
               onContextMenu={(e) => e.preventDefault()}
-              disabled={busy && !listening}
-              aria-label="おしてるあいだ おはなしできるよ"
+              disabled={busy && !recording}
+              aria-pressed={recording}
+              aria-label={recording ? 'おしたら おわり' : 'おして おはなしする'}
             >
               <span className="talk-mic-icon" aria-hidden>
-                🎤
+                {recording ? '🔴' : '🎤'}
               </span>
-              <span className="talk-mic-label">{listening ? 'きいてるよ…' : 'おして はなす'}</span>
+              <span className="talk-mic-label">
+                {recording ? 'きいてるよ… おしたら おくるよ' : 'おして はなす'}
+              </span>
             </button>
           )}
 
