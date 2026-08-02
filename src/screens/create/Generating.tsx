@@ -3,6 +3,8 @@ import { generateBookFromTalk } from '../../lib/generateBook';
 import type { BookJobStatus, TalkTurn } from '../../lib/talkApi';
 import type { Draft, DraftPage } from './draft';
 import { BigButton } from '../../components/BigButton';
+import { ArtBg } from '../../components/ArtBg';
+import { ART, FAIRY_IMAGES } from '../../lib/artAssets';
 import './generating.css';
 
 interface GeneratingProps {
@@ -13,12 +15,12 @@ interface GeneratingProps {
 
 /** ジョブ状況ごとの、精のようすとメッセージ */
 const STATUS_VIEW: Record<BookJobStatus, { fairy: string; message: string }> = {
-  story: { fairy: '/fairy/fairy-thinking.png', message: 'おはなしを かんがえているよ…' },
-  character: { fairy: '/fairy/fairy-thinking.png', message: 'しゅじんこうを かいているよ…' },
-  pages: { fairy: '/fairy/fairy-normal.png', message: 'えを かいているよ…' },
-  audio: { fairy: '/fairy/fairy-happy.png', message: 'こえを ふきこんでいるよ…' },
-  done: { fairy: '/fairy/fairy-cheer.png', message: 'できあがり!' },
-  error: { fairy: '/fairy/fairy-surprised.png', message: '' },
+  story: { fairy: FAIRY_IMAGES.thinking, message: 'おはなしを かんがえているよ…' },
+  character: { fairy: FAIRY_IMAGES.thinking, message: 'しゅじんこうを かいているよ…' },
+  pages: { fairy: FAIRY_IMAGES.normal, message: 'えを かいているよ…' },
+  audio: { fairy: FAIRY_IMAGES.happy, message: 'こえを ふきこんでいるよ…' },
+  done: { fairy: FAIRY_IMAGES.cheer, message: 'できあがり!' },
+  error: { fairy: FAIRY_IMAGES.surprised, message: '' },
 };
 
 /**
@@ -65,7 +67,8 @@ export function Generating({ conversation, onDone, onBack }: GeneratingProps) {
 
   if (error) {
     return (
-      <div className="create-step generating-step">
+      <div className="screen generating-step has-art-bg">
+        <ArtBg src={ART.bgTalk} veil="strong" />
         <img
           className="generating-fairy"
           src={STATUS_VIEW.error.fairy}
@@ -92,7 +95,8 @@ export function Generating({ conversation, onDone, onBack }: GeneratingProps) {
   const view = STATUS_VIEW[status];
 
   return (
-    <div className="create-step generating-step">
+    <div className="screen generating-step has-art-bg">
+      <ArtBg src={ART.bgTalk} veil="strong" />
       <div className="generating-stage">
         <img className="generating-fairy" src={view.fairy} alt="えほんの精" draggable={false} />
         {answers.length > 0 && (

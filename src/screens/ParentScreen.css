@@ -2,6 +2,12 @@
   gap: 16px;
 }
 
+/* 親モードは実務的な画面: design.mdどおり花飾りを描かない */
+.parent-screen::before,
+.parent-screen::after {
+  content: none;
+}
+
 .parent-header {
   display: grid;
   grid-template-columns: 1fr auto 1fr;

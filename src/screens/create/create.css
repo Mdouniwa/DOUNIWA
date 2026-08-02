@@ -368,8 +368,12 @@
   overflow: hidden;
 }
 
-.done-emoji {
-  font-size: 110px;
+.done-fairy {
+  width: min(56vw, 270px);
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+  filter: drop-shadow(0 14px 18px oklch(35% 0.08 160 / 0.35));
   animation: done-bounce 0.9s ease infinite alternate;
 }
 
@@ -378,7 +382,7 @@
     transform: translateY(0) scale(1);
   }
   to {
-    transform: translateY(-18px) scale(1.08);
+    transform: translateY(-14px) scale(1.04);
   }
 }
 
