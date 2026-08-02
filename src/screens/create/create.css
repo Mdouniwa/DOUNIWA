@@ -2,6 +2,22 @@
   gap: 12px;
 }
 
+/* 内側ステップが独自の.screen(アート背景つき)を持つ場合の外殻: 余白と角飾りを外す */
+.create-screen--bare {
+  padding: 0;
+  gap: 0;
+}
+
+.create-screen--bare::before,
+.create-screen--bare::after {
+  content: none;
+}
+
+/* 内側の.screenを外殻いっぱいまで伸ばす(下に地の色が見える隙間を防ぐ) */
+.create-screen--bare > .screen {
+  flex: 1;
+}
+
 .create-header {
   display: grid;
   grid-template-columns: 1fr auto 1fr;

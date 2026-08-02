@@ -12,7 +12,8 @@ import {
 import { speak, cancelSpeech } from '../../lib/tts';
 import { playSound } from '../../lib/soundEffects';
 import { useRecorder } from '../../hooks/useRecorder';
-import { FAIRY_IMAGES } from '../../lib/artAssets';
+import { ART, FAIRY_IMAGES } from '../../lib/artAssets';
+import { ArtBg } from '../../components/ArtBg';
 import './talk.css';
 
 interface TalkScreenProps {
@@ -167,7 +168,8 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
   const bigChoices = failCount >= 3 || micDisabled; // 失敗続き・マイク不可なら選択肢を前面に
 
   return (
-    <div className="screen talk-screen">
+    <div className="screen talk-screen has-art-bg">
+      <ArtBg src={ART.bgTalk} />
       <header className="talk-header">
         {/* 進捗: 数字が読めなくても分かる花の数 + 補助テキスト */}
         <div

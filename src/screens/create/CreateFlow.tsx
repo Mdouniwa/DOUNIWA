@@ -72,9 +72,12 @@ export function CreateFlow({ navigate }: CreateFlowProps) {
   };
 
   const showHeader = step === 'review' || step === 'cover';
+  // 対話ステップは内側のTalkScreenが独自に.screen(アート背景つき)を持つため、
+  // 外側の余白・角飾りを外して二重パディングを防ぐ
+  const bare = step === 'talk';
 
   return (
-    <div className="screen create-screen">
+    <div className={`screen create-screen${bare ? ' create-screen--bare' : ''}`}>
       {showHeader && (
         <header className="create-header">
           <button className="create-back pressable" onClick={back}>
