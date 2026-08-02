@@ -40,3 +40,6 @@ secrets/
 
 # v6 アート素材生成の一時出力
 .tmp-art/
+
+# 開発時のビューポート確認ページ(コミット・デプロイしない)
+public/__viewport-test.html

@@ -19,8 +19,15 @@
 }
 
 .home-title {
-  font-size: 32px;
-  color: var(--color-primary-dark);
+  line-height: 0;
+}
+
+.home-logo {
+  width: min(76vw, 380px);
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+  filter: drop-shadow(0 4px 10px oklch(45% 0.1 90 / 0.3));
 }
 
 .home-grid {
@@ -32,7 +39,8 @@
 .home-create-card {
   border: 4px dashed var(--color-primary);
   border-radius: 14px 26px 26px 14px;
-  background: oklch(63% 0.16 350 / 0.07);
+  /* アート背景の上でも読めるよう不透明度を上げた白ベース */
+  background: oklch(99% 0.006 340 / 0.82);
   box-shadow: var(--shadow-book);
   aspect-ratio: 4 / 3.6;
   display: flex;
@@ -53,9 +61,70 @@
   font-weight: bold;
 }
 
-.home-empty {
+/* --- 空状態(絵本0冊): えほんの精が誘うヒーロー画面 --- */
+.home-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding-bottom: 24px;
+}
+
+.home-hero-fairy {
+  width: min(52vw, 250px);
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+  /* 接地影で背景アートに馴染ませる */
+  filter: drop-shadow(0 14px 18px oklch(35% 0.08 160 / 0.35));
+  animation: home-hero-float 3.4s ease-in-out infinite;
+}
+
+@keyframes home-hero-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.home-hero-text {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-primary-dark);
   text-align: center;
-  font-size: 20px;
-  color: var(--color-text-light);
-  margin-top: 24px;
+  text-wrap: balance;
+  /* 「えほんを」の途中で折り返さない(スペース位置でのみ改行) */
+  word-break: keep-all;
+  background: oklch(99% 0.006 340 / 0.85);
+  border-radius: 999px;
+  padding: 12px 26px;
+  box-shadow: var(--shadow-card);
+}
+
+/* 木製看板風の大きな「つくる」ボタン(タップ領域88px以上) */
+.home-hero-create {
+  min-height: 96px;
+  min-width: min(76vw, 300px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 30px solid transparent;
+  border-image: url('/art/button-plate.png') 120 fill / 30px stretch;
+  color: oklch(34% 0.06 60);
+  font-weight: bold;
+  filter: drop-shadow(0 8px 12px oklch(35% 0.08 60 / 0.35));
+}
+
+.home-hero-create .home-create-icon {
+  font-size: 40px;
+}
+
+.home-hero-create .home-create-label {
+  font-size: 30px;
 }

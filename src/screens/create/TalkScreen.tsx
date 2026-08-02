@@ -12,6 +12,7 @@ import {
 import { speak, cancelSpeech } from '../../lib/tts';
 import { playSound } from '../../lib/soundEffects';
 import { useRecorder } from '../../hooks/useRecorder';
+import { FAIRY_IMAGES } from '../../lib/artAssets';
 import './talk.css';
 
 interface TalkScreenProps {
@@ -20,14 +21,6 @@ interface TalkScreenProps {
   /** やめる(ホームへ) */
   onQuit: () => void;
 }
-
-const FAIRY_IMAGES: Record<FairyExpression, string> = {
-  normal: '/fairy/fairy-normal.png',
-  happy: '/fairy/fairy-happy.png',
-  thinking: '/fairy/fairy-thinking.png',
-  surprised: '/fairy/fairy-surprised.png',
-  cheer: '/fairy/fairy-cheer.png',
-};
 
 /** 精のせりふ音声を再生する。サーバーTTSが無ければWeb Speechにフォールバック */
 function playQuestion(

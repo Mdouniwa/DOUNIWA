@@ -1,0 +1,43 @@
+/* 画面全体に敷くアート背景(.screen 直下に置く) */
+.art-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.art-bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* 内容の可読性を上げる薄いベール */
+.art-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.art-bg--veil-light::after {
+  background: oklch(98% 0.01 340 / 0.22);
+}
+
+.art-bg--veil-strong::after {
+  background: oklch(98% 0.01 340 / 0.45);
+}
+
+/* アート背景つき画面: CSSの角花飾りは重複するので消し、内容を背景の上に載せる */
+.has-art-bg::before,
+.has-art-bg::after {
+  content: none;
+}
+
+.has-art-bg > :not(.art-bg):not(.deco-sprinkles) {
+  position: relative;
+  z-index: 1;
+}

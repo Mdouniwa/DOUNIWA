@@ -8,10 +8,12 @@ import './BookCard.css';
 interface BookCardProps {
   book: Book;
   onClick: () => void;
+  /** 木と蔦の装飾フレームを重ねる(ホーム用。親モードは装飾なしのまま) */
+  framed?: boolean;
 }
 
 /** ホーム・親モードで使う絵本カード(表紙サムネ+タイトル) */
-export function BookCard({ book, onClick }: BookCardProps) {
+export function BookCard({ book, onClick, framed = false }: BookCardProps) {
   const [coverBlob, setCoverBlob] = useState<Blob | null>(null);
 
   useEffect(() => {
@@ -38,6 +40,7 @@ export function BookCard({ book, onClick }: BookCardProps) {
         )}
       </div>
       <div className="book-card__title">{book.title || 'えほん'}</div>
+      {framed && <span className="book-card__frame" aria-hidden />}
     </button>
   );
 }
