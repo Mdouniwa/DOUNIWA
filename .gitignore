@@ -37,3 +37,6 @@ server/dist
 *service-account*.json
 *-sa.json
 secrets/
+
+# v6 アート素材生成の一時出力
+.tmp-art/
