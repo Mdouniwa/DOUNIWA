@@ -295,7 +295,7 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
       <div className="talk-question" aria-live="polite">
         {error ? (
           <>
-            <p className="talk-question-text">えほんのせいの こえが とどかなかったよ</p>
+            <p className="talk-question-text">えほんのせいに こえが とどかなかったみたい</p>
             <button
               className="talk-retry pressable"
               onClick={() => void sendTurn(lastAnswerRef.current)}

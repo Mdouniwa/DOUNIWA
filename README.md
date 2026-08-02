@@ -71,7 +71,7 @@ iPadでアプリを開き、**親モード(ホーム右上3秒長押し)→ せ�
 | 物語生成 | `gemini-3.6-flash` | `STORY_MODEL` | 起承転結の構成力が必要なため上位Flash |
 | 挿絵生成 | `gemini-3.1-flash-image`(Nano Banana 2) | `IMAGE_MODEL` | **参照画像方式**でキャラクターの見た目を全ページ固定 |
 | 音声合成 | `gemini-3.1-flash-tts-preview` | `TTS_MODEL` | 話し方を自然言語で指示可能・日本語高品質(プレビュー版のため割当制限に注意) |
-| TTSの声 | `Vindemiatrix` | `TTS_VOICE` | 落ち着いた大人の女性声(候補のF0比較で最も低く穏やか。精のビジュアルに合わせて選定)。話し方は `TTS_STYLE` で調整可 |
+| TTSの声 | `Sulafat` | `TTS_VOICE` | 若く澄んだやさしいお姉さん声(公式: Warm。候補8声のF0比較で中間域)。話し方は `TTS_STYLE` で調整可 |
 
 > 音声はGeminiが**生のPCM**で返すため、サーバー側でWAVヘッダを付けて `audio/wav` にして返します(iOS Safari対応)。
 

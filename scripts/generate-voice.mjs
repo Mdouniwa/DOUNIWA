@@ -7,7 +7,7 @@
  *   node --env-file="$HOME/.ehon-art.env" scripts/generate-voice.mjs
  *
  * 出力: public/audio/first-question.m4a(afconvertが無い環境では .wav)
- * 声・話し方は server/src/env.ts の既定(Vindemiatrix/おだやか低めトーン)と揃えること。
+ * 声・話し方は server/src/env.ts の既定(Sulafat/わかいおねえさん)と揃えること。
  */
 import { GoogleGenAI } from '@google/genai';
 import { execFileSync } from 'node:child_process';
@@ -19,10 +19,10 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = path.join(ROOT, 'public', 'audio');
 
 const TTS_MODEL = process.env.TTS_MODEL || 'gemini-3.1-flash-tts-preview';
-const TTS_VOICE = process.env.TTS_VOICE || 'Vindemiatrix';
+const TTS_VOICE = process.env.TTS_VOICE || 'Sulafat';
 const TTS_STYLE =
   process.env.TTS_STYLE ||
-  'やさしく、おだやかに、少し低めの落ち着いたトーンで、ゆっくり温かく はなしかける こえで いってください';
+  'わかい おねえさんが、やさしく すんだ こえで、あたたかく はなしかけるように いってください';
 
 // src/lib/talkApi.ts の FIRST_QUESTION と一致させること
 const LINES = [

@@ -39,13 +39,15 @@ export const config = {
   /** 音声合成: 感情表現を自然言語で指示できる日本語高品質TTS */
   ttsModel: process.env.TTS_MODEL || 'gemini-3.1-flash-tts-preview',
   /**
-   * TTSのプリセット声。落ち着いた大人の女性声(公式説明: Gentle)。
-   * 候補比較: Leda=194Hz(幼め) / Sulafat=218Hz / Achernar=222Hz / Vindemiatrix=168Hz
-   * → 最も低く穏やかな Vindemiatrix を既定にする(儚げな妖精のビジュアルに合わせる)
+   * TTSのプリセット声。若く澄んだやさしいお姉さん声(公式説明: Warm)。
+   * 比較(「わかいおねえさん」スタイル指示時のF0中央値):
+   *   Vindemiatrix=214Hz(落ち着きすぎ) / Leda=231Hz(声質が幼い) /
+   *   Callirrhoe=240 / Aoede=245 / Sulafat=250 / Erinome=273 / Despina=282
+   * → 中間域で「Warm」の Sulafat を既定にする(20代前半のお姉さん像)
    */
-  ttsVoice: process.env.TTS_VOICE || 'Vindemiatrix',
+  ttsVoice: process.env.TTS_VOICE || 'Sulafat',
   /** TTSの話し方指示(文頭に付ける自然言語スタイル。読み上げられない) */
   ttsStyle:
     process.env.TTS_STYLE ||
-    'やさしく、おだやかに、少し低めの落ち着いたトーンで、ゆっくり温かく はなしかける こえで いってください',
+    'わかい おねえさんが、やさしく すんだ こえで、あたたかく はなしかけるように いってください',
 } as const;
