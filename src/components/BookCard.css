@@ -41,6 +41,16 @@
   font-size: 64px;
 }
 
+/* 木と蔦の装飾フレーム(9-slice)。タップを邪魔しない飾りレイヤー */
+.book-card__frame {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  border: 20px solid transparent;
+  border-image: url('/art/frame-book.png') 180 / 20px stretch;
+}
+
 .book-card__title {
   padding: 12px 16px;
   font-size: 20px;

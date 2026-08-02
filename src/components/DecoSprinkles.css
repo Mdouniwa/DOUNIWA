@@ -1,0 +1,29 @@
+/* 余白に散りばめる装飾イラスト(タップを邪魔しない・支援技術から隠す) */
+.deco-sprinkles {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  /* 画面端からわずかにはみ出す配置でも横スクロールを発生させない */
+  overflow: hidden;
+}
+
+.deco-sprinkle {
+  position: absolute;
+  width: 72px;
+  /* 3D調の素材を画面に馴染ませる接地影 */
+  filter: drop-shadow(0 6px 10px oklch(40% 0.06 160 / 0.28));
+}
+
+/* 小さい画面では装飾を段階的に減らす(情報密度は保ちつつ操作を優先) */
+@media (max-width: 700px) {
+  .deco-tier-3 {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .deco-tier-2 {
+    display: none;
+  }
+}

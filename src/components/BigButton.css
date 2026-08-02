@@ -14,6 +14,8 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+  /* ボタン文言を途中で折り返さない(狭い画面では親側でflex-wrapする) */
+  white-space: nowrap;
 }
 
 .big-button:disabled {

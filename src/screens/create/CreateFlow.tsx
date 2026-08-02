@@ -3,6 +3,8 @@ import type { Navigate } from '../../routes';
 import type { Draft, DraftPage } from './draft';
 import type { TalkTurn } from '../../lib/talkApi';
 import { ProgressDots } from '../../components/ProgressDots';
+import { ArtBg } from '../../components/ArtBg';
+import { ART } from '../../lib/artAssets';
 import { TalkScreen } from './TalkScreen';
 import { Generating } from './Generating';
 import { ReviewPages } from './ReviewPages';
@@ -72,9 +74,14 @@ export function CreateFlow({ navigate }: CreateFlowProps) {
   };
 
   const showHeader = step === 'review' || step === 'cover';
+  // 対話・生成中ステップは内側が独自に.screen(アート背景つき)を持つため、
+  // 外側の余白・角飾りを外して二重パディングを防ぐ
+  const bare = step === 'talk' || step === 'generating';
 
   return (
-    <div className="screen create-screen">
+    <div className={`screen create-screen${bare ? ' create-screen--bare' : ' has-art-bg'}`}>
+      {/* 確認・表紙・完了ステップは外殻に強めのベール付き背景を敷いて世界観を統一 */}
+      {!bare && <ArtBg src={ART.bgHome} veil="strong" />}
       {showHeader && (
         <header className="create-header">
           <button className="create-back pressable" onClick={back}>

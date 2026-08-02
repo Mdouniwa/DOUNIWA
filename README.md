@@ -1,4 +1,4 @@
-# しゃべるえほん(しゃべる絵本メーカー v5)
+# しゃべるえほん(しゃべる絵本メーカー v6)
 
 家族専用の「しゃべる絵本メーカー」PWA。**「えほんの精」が子どもに話しかけ、子どもが声かタップで答えると、その会話から絵本(物語・挿絵・ナレーション音声)ができあがります。** iPad(Safari・ホーム画面追加)で読む家庭内PoCです。
 
@@ -85,12 +85,27 @@ v4は各ページを独立生成していたため主人公の見た目がペー
 2. 2ページ目以降は基準画像を**参照画像としてリクエストに添付**
 3. 全ページ同じキャラクターの絵本になる(基準画像は絵本と一緒にIndexedDBへ保存)
 
-### えほんの精のアセット
+### アート素材(v6)
 
-対話画面のキャラクター画像は**ランタイム生成せず**、`public/fairy/fairy-{normal,happy,thinking,surprised,cheer}.png` を静的同梱(API依存・コストゼロ)。
+UIのアート素材(えほんの精・ロゴ・背景・装飾イラスト・UIパーツ、計24点)は
+**ランタイム生成せず**、開発時に生成した画像を静的同梱(API依存・コストゼロ)。
+パスは `src/lib/artAssets.ts` に集約。
 
-- 本生成: `GEMINI_API_KEY=... node scripts/generate-fairy.mjs`(またはVertex環境変数)。1枚目を基準画像に、残り表情を参照画像方式で生成し同一キャラクターに揃える
-- 現在同梱されているのは**手描きSVG由来のプレースホルダー**(`node scripts/fairy-placeholder.mjs` で再生成可)。認証を用意して本生成すると同名で上書きされる
+```bash
+# 全素材を生成(生成済みファイルはスキップ)
+node --env-file="$HOME/.ehon-art.env" scripts/generate-art.mjs
+
+# 部分再生成(グループ: fairy | logo | bg | deco | ui)
+node --env-file="$HOME/.ehon-art.env" scripts/generate-art.mjs --only=fairy --force
+```
+
+- 認証は `GEMINI_API_KEY`(AI Studioキー。素材はプロンプトのみで個人情報を含まないためVertex不要)。env ファイルは `GEMINI_API_KEY=...` の1行
+- モデルは `IMAGE_MODEL` で差し替え可(既定 `gemini-3.1-flash-image` = Nano Banana 2)
+- えほんの精は1枚目(normal)を基準画像に、残り表情を**参照画像方式**で生成して同一キャラクターに揃える
+- 透過素材はマゼンタ単色背景で生成→スクリプト内のクロマキー処理で抜く
+- sharpでリサイズ+圧縮(1枚200KB以下目安)。一時ディレクトリ経由で書くため途中失敗しても既存素材は壊れない
+- コスト目安: 全素材再生成で約$1(24枚 × 約$0.04)
+- 旧スクリプト `scripts/generate-fairy.mjs` / `scripts/fairy-placeholder.mjs` はv5時代のもの(fairyのみ)。v6では `generate-art.mjs` を使う
 
 ### 1冊あたりの想定コスト概算
 
@@ -113,7 +128,7 @@ cd server && npm run typecheck   # サーバーの型チェック
 ```
 
 - アプリアイコン変更: `scripts/icon.svg` を編集して `node scripts/generate-icons.mjs`
-- 精のアセット再生成: 上記「えほんの精のアセット」参照
+- アート素材再生成: 上記「アート素材(v6)」参照(`npm run art -- --only=...` でも可)
 
 ## Vercelへのデプロイ
 

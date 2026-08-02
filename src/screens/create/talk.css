@@ -20,10 +20,13 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  background: var(--color-card);
+  background: oklch(99% 0.006 340 / 0.92);
+  border: 2px solid oklch(80% 0.09 90);
   border-radius: 999px;
   padding: 8px 16px;
-  box-shadow: var(--shadow-card);
+  box-shadow:
+    0 1px 0 oklch(100% 0 0 / 0.8) inset,
+    var(--shadow-card);
 }
 
 .talk-progress-flower {
@@ -34,7 +37,7 @@
 }
 
 .talk-progress-flower.is-filled {
-  filter: none;
+  filter: drop-shadow(0 0 5px oklch(85% 0.12 90 / 0.9));
   opacity: 1;
   transform: scale(1.1);
 }
@@ -51,7 +54,7 @@
   height: 56px;
   border: none;
   border-radius: 50%;
-  background: var(--color-card);
+  background: oklch(99% 0.006 340 / 0.9);
   box-shadow: var(--shadow-card);
   color: var(--color-text-light);
   font-size: 24px;
@@ -69,10 +72,12 @@
 }
 
 .talk-fairy-img {
-  width: min(46vw, 240px);
+  width: min(60vw, 320px);
   height: auto;
   user-select: none;
   -webkit-user-drag: none;
+  /* 接地影で背景アートに馴染ませる */
+  filter: drop-shadow(0 16px 20px oklch(35% 0.08 160 / 0.35));
 }
 
 @keyframes talk-fairy-float {
@@ -95,15 +100,37 @@
   }
 }
 
-/* --- 質問文 --- */
+/* --- 質問文: 立体的な吹き出し(精のせりふ) --- */
 .talk-question {
+  position: relative;
   min-height: 96px;
+  width: min(100%, 480px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 0 8px;
+  padding: 18px 22px;
+  background: linear-gradient(180deg, oklch(100% 0 0 / 0.96), oklch(97% 0.012 340 / 0.94));
+  border-radius: 26px;
+  box-shadow:
+    0 2px 0 oklch(100% 0 0 / 0.9) inset,
+    0 -3px 0 oklch(85% 0.04 340 / 0.5) inset,
+    0 10px 18px oklch(35% 0.08 340 / 0.22);
+}
+
+/* 吹き出しのしっぽ(上の精に向ける) */
+.talk-question::before {
+  content: '';
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  width: 26px;
+  height: 26px;
+  background: oklch(100% 0 0 / 0.96);
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 6px 0 0 0;
+  box-shadow: -3px -3px 4px oklch(35% 0.08 340 / 0.06);
 }
 
 .talk-question-text {
@@ -114,6 +141,7 @@
   text-align: center;
   color: var(--color-primary-dark);
   text-wrap: balance;
+  word-break: keep-all;
 }
 
 .talk-question-thinking {
@@ -155,20 +183,20 @@
   padding-bottom: 8px;
 }
 
+/* マイク: 木製看板風の立体プレート */
 .talk-mic {
-  width: min(100%, 340px);
-  min-height: 96px;
-  border: none;
-  border-radius: 999px;
+  width: min(100%, 360px);
+  min-height: 104px;
+  border: 26px solid transparent;
+  border-image: url('/art/button-plate.png') 120 fill / 26px stretch;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
   font-size: 22px;
   font-weight: 700;
-  color: #fff;
-  background: var(--color-primary);
-  box-shadow: var(--shadow-card);
+  color: oklch(34% 0.06 60);
+  filter: drop-shadow(0 8px 12px oklch(35% 0.08 60 / 0.35));
   cursor: pointer;
   touch-action: none; /* 押しっぱなし中のスクロール・長押しメニューを防ぐ */
   -webkit-touch-callout: none;
@@ -183,7 +211,7 @@
 }
 
 .talk-mic.is-listening {
-  background: var(--color-accent);
+  filter: drop-shadow(0 0 14px oklch(70% 0.14 300 / 0.9)) brightness(1.1);
   animation: talk-mic-pulse 1s ease-in-out infinite;
 }
 
@@ -191,11 +219,9 @@
   0%,
   100% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 oklch(58% 0.12 300 / 0.45);
   }
   50% {
-    transform: scale(1.04);
-    box-shadow: 0 0 0 14px oklch(58% 0.12 300 / 0);
+    transform: scale(1.05);
   }
 }
 
@@ -206,12 +232,16 @@
   gap: 10px;
 }
 
+/* 選択肢: 下辺に厚みのある立体カード */
 .talk-choice {
   min-height: 88px;
   border: none;
   border-radius: var(--radius-md);
-  background: var(--color-card);
-  box-shadow: var(--shadow-card);
+  background: linear-gradient(180deg, oklch(100% 0 0 / 0.97), oklch(96.5% 0.015 340 / 0.95));
+  box-shadow:
+    0 2px 0 oklch(100% 0 0 / 0.9) inset,
+    0 4px 0 oklch(84% 0.03 340),
+    0 9px 14px oklch(35% 0.08 340 / 0.2);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -264,5 +294,66 @@
 @media (max-width: 480px) {
   .talk-choices {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 横画面: 精を小さくし選択肢を4列に(タップ領域88pxは維持、あふれた分は縦スクロール) */
+@media (orientation: landscape) and (max-height: 520px) {
+  .talk-fairy-img {
+    width: 130px;
+  }
+
+  .talk-question {
+    min-height: 60px;
+    padding: 10px 16px;
+  }
+
+  .talk-question-text {
+    font-size: 19px;
+  }
+
+  .talk-choices {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .talk-mic {
+    min-height: 88px;
+    width: min(100%, 300px);
+  }
+}
+
+/* 背の低い端末(iPhone SE等)ではスクロールなしで収まるよう精と余白を詰める */
+@media (max-height: 740px) {
+  .talk-screen {
+    gap: 6px;
+  }
+
+  .talk-fairy-img {
+    width: min(44vw, 220px);
+  }
+
+  .talk-question {
+    min-height: 72px;
+    padding: 12px 16px;
+  }
+
+  .talk-question-text {
+    font-size: 22px;
+  }
+
+  .talk-answers {
+    gap: 10px;
+  }
+
+  .talk-mic {
+    min-height: 96px;
+  }
+
+  .talk-choice {
+    min-height: 80px;
+  }
+
+  .talk-choice-emoji {
+    font-size: 28px;
   }
 }
