@@ -92,41 +92,87 @@
   }
 }
 
+/* 巻物(scroll.png 9-slice)に載せた誘い文句 */
 .home-hero-text {
   font-size: 24px;
   font-weight: 700;
-  color: var(--color-primary-dark);
+  color: oklch(38% 0.08 50);
   text-align: center;
   text-wrap: balance;
   /* 「えほんを」の途中で折り返さない(スペース位置でのみ改行) */
   word-break: keep-all;
-  background: oklch(99% 0.006 340 / 0.85);
-  border-radius: 999px;
-  padding: 12px 26px;
-  box-shadow: var(--shadow-card);
-}
-
-/* 木製看板風の大きな「つくる」ボタン(タップ領域88px以上) */
-.home-hero-create {
-  min-height: 96px;
-  min-width: min(76vw, 300px);
+  min-height: 100px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  border: 30px solid transparent;
-  border-image: url('/art/button-plate.png') 120 fill / 30px stretch;
-  color: oklch(34% 0.06 60);
+  border: 38px solid transparent;
+  border-image: url('/art/scroll.png') 112 fill / 38px stretch;
+  filter: drop-shadow(0 8px 12px oklch(35% 0.08 60 / 0.32));
+}
+
+/* 木製看板風の大きな「つくる」ボタン(タップ領域88px以上)。
+   金の光をまとわせて周囲の3D素材に負けない存在感に */
+.home-hero-create {
+  min-height: 112px;
+  min-width: min(80vw, 330px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 32px solid transparent;
+  border-image: url('/art/button-plate.png') 120 fill / 32px stretch;
+  color: oklch(30% 0.06 60);
   font-weight: bold;
-  filter: drop-shadow(0 8px 12px oklch(35% 0.08 60 / 0.35));
+  text-shadow: 0 1px 0 oklch(100% 0 0 / 0.5);
+  filter: drop-shadow(0 10px 14px oklch(35% 0.08 60 / 0.4))
+    drop-shadow(0 0 10px oklch(85% 0.12 90 / 0.55));
+  animation: home-hero-create-glow 2.2s ease-in-out infinite alternate;
+}
+
+@keyframes home-hero-create-glow {
+  from {
+    filter: drop-shadow(0 10px 14px oklch(35% 0.08 60 / 0.4))
+      drop-shadow(0 0 8px oklch(85% 0.12 90 / 0.4));
+  }
+  to {
+    filter: drop-shadow(0 10px 14px oklch(35% 0.08 60 / 0.4))
+      drop-shadow(0 0 18px oklch(85% 0.14 90 / 0.85));
+  }
 }
 
 .home-hero-create .home-create-icon {
-  font-size: 40px;
+  font-size: 44px;
 }
 
 .home-hero-create .home-create-label {
-  font-size: 30px;
+  font-size: 32px;
+  letter-spacing: 0.06em;
+}
+
+/* 背の低い端末(SE縦): ヒーローを詰めてスクロールなしで収める */
+@media (orientation: portrait) and (max-height: 700px) {
+  .home-screen {
+    gap: 12px;
+  }
+
+  .home-hero {
+    gap: 12px;
+  }
+
+  .home-hero-fairy {
+    width: min(42vw, 200px);
+  }
+
+  .home-hero-text {
+    font-size: 21px;
+    min-height: 84px;
+    border-width: 32px;
+    border-image-width: 32px;
+  }
+
+  .home-hero-create {
+    min-height: 100px;
+  }
 }
 
 /* 横画面(低い画面): ロゴ・精を小さく、グリッドを4列にして破綻を防ぐ */

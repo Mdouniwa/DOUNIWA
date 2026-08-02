@@ -200,6 +200,19 @@ const ASSETS = [
     format: 'png',
   },
   {
+    id: 'scroll',
+    group: 'ui',
+    out: 'art/scroll.png',
+    prompt: `横長の巻物(スクロール)。少し開いた羊皮紙風の紙、あたたかい淡いクリーム色。
+左右の両端に丸い木の軸。縁に沿って緑の小さな蔦の葉と金色の光の粒の控えめな飾り。
+中央は無地で、あとから文字を載せられるように空けておく。
+上下左右の縁の飾りは対称に近く、9-sliceで分割して使えるデザイン。`,
+    transparent: true,
+    aspect: '21:9',
+    size: [640, 274],
+    format: 'png',
+  },
+  {
     id: 'button-plate',
     group: 'ui',
     out: 'art/button-plate.png',

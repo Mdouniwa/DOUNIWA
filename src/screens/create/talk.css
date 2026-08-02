@@ -159,16 +159,17 @@
   }
 }
 
+/* もういちど: マイクと同じ木製看板プレートで統一 */
 .talk-retry {
-  border: none;
-  border-radius: 999px;
-  min-height: 64px;
-  padding: 0 32px;
-  font-size: 20px;
+  min-height: 88px;
+  min-width: min(70vw, 260px);
+  border: 24px solid transparent;
+  border-image: url('/art/button-plate.png') 120 fill / 24px stretch;
+  font-size: 22px;
   font-weight: 700;
-  color: #fff;
-  background: var(--color-primary);
-  box-shadow: var(--shadow-card);
+  color: oklch(30% 0.06 60);
+  text-shadow: 0 1px 0 oklch(100% 0 0 / 0.5);
+  filter: drop-shadow(0 8px 12px oklch(35% 0.08 60 / 0.35));
   cursor: pointer;
 }
 

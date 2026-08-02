@@ -164,7 +164,11 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
   };
 
   const answeredCount = history.length;
-  const expression: FairyExpression = busy ? 'thinking' : (current?.expression ?? 'normal');
+  const expression: FairyExpression = busy
+    ? 'thinking'
+    : error
+      ? 'surprised'
+      : (current?.expression ?? 'normal');
   const bigChoices = failCount >= 3 || micDisabled; // 失敗続き・マイク不可なら選択肢を前面に
 
   return (
@@ -208,7 +212,7 @@ export function TalkScreen({ onDone, onQuit }: TalkScreenProps) {
       <div className="talk-question" aria-live="polite">
         {error ? (
           <>
-            <p className="talk-question-text">せいの こえが とどかなかったよ</p>
+            <p className="talk-question-text">えほんのせいの こえが とどかなかったよ</p>
             <button
               className="talk-retry pressable"
               onClick={() => void sendTurn(lastAnswerRef.current)}
