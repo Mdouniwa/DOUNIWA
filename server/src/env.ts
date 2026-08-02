@@ -1,6 +1,6 @@
 /**
  * サーバー設定。すべて環境変数で差し替え可能にする(モデルIDは特に改廃が速いため)。
- * 必須: GOOGLE_CLOUD_PROJECT と GOOGLE_APPLICATION_CREDENTIALS(サービスアカウント鍵のパス)。
+ * 必須: GEMINI_API_KEY(課金有効なプロジェクトのGemini APIキー)。
  */
 
 // server/.env があれば読み込む(Node 20.6+ 標準機能。dotenv不要)
@@ -27,8 +27,7 @@ export const config = {
   /** CORS許可オリジン(カンマ区切り)。未設定なら全許可(Tailscale内前提) */
   corsOrigins: process.env.CORS_ORIGINS?.split(',').map((s) => s.trim()) ?? null,
 
-  googleCloudProject: () => required('GOOGLE_CLOUD_PROJECT'),
-  googleCloudLocation: process.env.GOOGLE_CLOUD_LOCATION || 'global',
+  geminiApiKey: () => required('GEMINI_API_KEY'),
 
   // --- 使用モデル(用途別・環境変数で差し替え可) ---
   /** 対話・質問生成: 低レイテンシ重視で子どもを待たせない */

@@ -1,8 +1,9 @@
 /**
- * Vertex AI クライアント(シングルトン)。
- * AI Studio の APIキー方式ではなく Vertex AI を使う。
- * 理由: 入力データが学習に使われないのがデフォルトで、子どもの声を扱う上で適切。
- * 認証はサービスアカウント鍵(GOOGLE_APPLICATION_CREDENTIALS のパス指定)で行われる。
+ * Gemini API クライアント(シングルトン)。
+ * 認証は GEMINI_API_KEY(APIキー方式)。
+ * 旧Vertex AI方式は Gemini Enterprise Agent Platform への改名に伴い廃止した。
+ * 課金有効なプロジェクトのAPIキーであれば、入力データが学習に使われない条件は
+ * 従来どおり満たせる(子どもの声を扱う上での必須条件)。
  */
 import { GoogleGenAI } from '@google/genai';
 import { config } from './env.js';
@@ -11,11 +12,7 @@ let client: GoogleGenAI | null = null;
 
 export function getAI(): GoogleGenAI {
   if (!client) {
-    client = new GoogleGenAI({
-      vertexai: true,
-      project: config.googleCloudProject(),
-      location: config.googleCloudLocation,
-    });
+    client = new GoogleGenAI({ apiKey: config.geminiApiKey() });
   }
   return client;
 }

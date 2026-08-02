@@ -1,10 +1,10 @@
 # しゃべる絵本メーカー v5 — Mac mini 対話サーバー
 
 PWA(Vercel配信)から Tailscale 経由で呼ばれる、対話・絵本生成のバックエンド。
-Node.js + Express + Vertex AI(`@google/genai`)。フレームワークはこれ以上入れない。
+Node.js + Express + Gemini API(`@google/genai`)。フレームワークはこれ以上入れない。
 
 ```
-[iPad/iPhone PWA] ──Tailscale──→ [このサーバー :8788] ──→ [Vertex AI]
+[iPad/iPhone PWA] ──Tailscale──→ [このサーバー :8788] ──→ [Gemini API]
 ```
 
 ## 使用ポート
@@ -21,15 +21,13 @@ Node.js + Express + Vertex AI(`@google/genai`)。フレームワークはこれ�
 
 ## セットアップ
 
-### 1. Vertex AI の認証(初回のみ)
+### 1. Gemini APIキーの用意(初回のみ)
 
-1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作成(既存でも可)
-2. 「Vertex AI API」を有効化(APIとサービス → ライブラリ → Vertex AI API → 有効にする)
-3. サービスアカウントを作成(IAMと管理 → サービスアカウント → 作成)
-   - ロール: **Vertex AI ユーザー**(`roles/aiplatform.user`)
-4. 鍵を作成(サービスアカウント → キー → 鍵を追加 → JSON)してダウンロード
-5. 鍵ファイルをリポジトリ**外**に置く(例: `~/secrets/ehon-server-sa.json`)
-   - **鍵ファイルは絶対にリポジトリにコミットしない**(`.gitignore` 済みだが置かないのが原則)
+1. **課金が有効な** Google Cloud プロジェクトで Gemini API の APIキーを発行する
+2. キーは `.env` にのみ書く。**絶対にリポジトリにコミットしない**
+
+> 課金有効なプロジェクトのAPIキーであれば、入力データが学習に使われない条件を満たせる
+> (子どもの声を扱うための必須条件)。無課金の無料枠キーは学習に使われる可能性があるため使わないこと。
 
 ### 2. サーバー設定
 
@@ -37,7 +35,7 @@ Node.js + Express + Vertex AI(`@google/genai`)。フレームワークはこれ�
 cd server
 npm install
 cp .env.example .env
-# .env を編集: GOOGLE_CLOUD_PROJECT と GOOGLE_APPLICATION_CREDENTIALS を設定
+# .env を編集: GEMINI_API_KEY を設定
 ```
 
 ### 3. 起動
@@ -92,4 +90,6 @@ iPad側は Tailscale のマシン名で到達する(例: `http://mac-mini.tailne
 | 挿絵生成 | `gemini-3.1-flash-image` (Nano Banana 2) | 参照画像方式でキャラ一貫性を保持 |
 | 音声合成 | `gemini-3.1-flash-tts-preview` | 感情指示可・日本語高品質 |
 
-APIキー方式(AI Studio)ではなく Vertex AI を使う理由: **入力データが学習に使われないのがデフォルト**であり、子どもの声を扱うため。
+認証方式について: 以前はVertex AI(サービスアカウント鍵)方式だったが、Vertex AI の
+Gemini Enterprise Agent Platform への改名に伴い、**課金有効プロジェクトのGemini APIキー方式**に移行した。
+課金有効キーなら**入力データが学習に使われない**条件は従来どおり満たせる(子どもの声を扱うため必須)。

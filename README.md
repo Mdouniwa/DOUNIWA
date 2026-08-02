@@ -15,30 +15,28 @@
     │
     └─ 対話・生成 ──Tailscale──→ [Mac mini 対話サーバー :8788]
                                         │
-                                        └──→ [Vertex AI](Gemini / Nano Banana 2 / Gemini TTS)
+                                        └──→ [Gemini API](Gemini / Nano Banana 2 / Gemini TTS)
 ```
 
 - **対話と生成のときだけ**ネットワーク(Tailscale経由でMac mini)が必要です。生成済み絵本の閲覧・再生は**完全オフライン**(画像・音声はBlobとしてIndexedDBに保存)。
-- バックエンドは **`server/`(Node.js + Express + Vertex AI SDK)** に集約。v4のVercelサーバーレス関数は廃止しました。
-- **Vertex AIを使う理由**: AI Studio APIキー方式と違い、**入力データが学習に使われないのがデフォルト**。子どもの声をそのまま音声理解に渡すため、こちらを採用。
+- バックエンドは **`server/`(Node.js + Express + `@google/genai`)** に集約。v4のVercelサーバーレス関数は廃止しました。
+- **認証は課金有効プロジェクトのGemini APIキー方式**(`GEMINI_API_KEY`)。課金有効キーなら**入力データが学習に使われない**条件を満たせるため、子どもの声をそのまま音声理解に渡せる。旧Vertex AI(サービスアカウント鍵)方式は、Gemini Enterprise Agent Platform への改名に伴い廃止。
 
 ## セットアップ(Mac mini)
 
 詳細は [server/README.md](server/README.md)。要点:
 
-### 1. Vertex AI認証(初回のみ)
+### 1. Gemini APIキーの用意(初回のみ)
 
-1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクト作成
-2. **Vertex AI API を有効化**
-3. サービスアカウント作成(ロール: **Vertex AI ユーザー**)→ **JSON鍵**をダウンロード
-4. 鍵はリポジトリ**外**(例 `~/secrets/ehon-server-sa.json`)に置く。**絶対にコミットしない**
+1. **課金が有効な** Google Cloud プロジェクトで Gemini API の APIキーを発行
+2. キーは `server/.env` にのみ書く。**絶対にコミットしない**(無課金の無料枠キーは入力が学習に使われる可能性があるため使わない)
 
 ### 2. サーバー起動
 
 ```bash
 cd server
 npm install
-cp .env.example .env   # GOOGLE_CLOUD_PROJECT と GOOGLE_APPLICATION_CREDENTIALS を記入
+cp .env.example .env   # GEMINI_API_KEY を記入
 npm run dev            # 開発
 npm run build && npm start   # 本番
 curl http://localhost:8788/healthz   # 動作確認
@@ -59,7 +57,7 @@ iPadでアプリを開き、**親モード(ホーム右上3秒長押し)→ せ�
 
 - Vite + React + TypeScript(PWA: `vite-plugin-pwa`)
 - IndexedDB(`idb`)— 画像・音声・対話ログ・主人公基準画像を端末内保存
-- 対話サーバー: Node.js + Express + `@google/genai`(Vertex AIモード)
+- 対話サーバー: Node.js + Express + `@google/genai`(Gemini APIキー方式)
 - 録音: MediaRecorder API(iOSは `audio/mp4`、他は `webm`)。対話の音声回答も同じ仕組み
 - 読み上げフォールバック: Web Speech API(サーバーTTSが失敗しても進める)
 - 効果音: WebAudio合成(外部音源ファイルなし)
