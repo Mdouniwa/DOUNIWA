@@ -43,3 +43,6 @@ secrets/
 
 # 開発時のビューポート確認ページ(コミット・デプロイしない)
 public/__viewport-test.html
+
+# Claude Code 作業ディレクトリ
+.claude/worktrees/
